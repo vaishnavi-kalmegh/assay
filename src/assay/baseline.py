@@ -91,7 +91,9 @@ def _resolve_schema(
     reference = schema["$ref"]
     prefix = "#/components/schemas/"
     if not isinstance(reference, str) or not reference.startswith(prefix):
-        raise _unsupported(where, f"only local schema references are supported: {reference!r}")
+        raise _unsupported(
+            where, f"only local schema references are supported: {reference!r}"
+        )
     name = reference[len(prefix) :]
     schemas = document.get("components", {}).get("schemas", {})
     if not name or name not in schemas:
@@ -165,7 +167,9 @@ def _parse_body_schema(
         )
     media = content["application/json"]
     if not isinstance(media, dict):
-        raise _unsupported(f"{method.upper()} {path}.requestBody", "media type must be an object")
+        raise _unsupported(
+            f"{method.upper()} {path}.requestBody", "media type must be an object"
+        )
     _check_keys(media, {"schema", "example", "examples", "encoding"},
                 f"{method.upper()} {path}.requestBody.application/json")
     if set(media) - {"schema"}:
@@ -176,9 +180,13 @@ def _parse_body_schema(
     body_schema = media.get("schema")
     if not isinstance(body_schema, dict):
         raise _unsupported(f"{method.upper()} {path}.requestBody.schema", "is required")
-    body_schema = _resolve_schema(body_schema, document, f"{method.upper()} {path}.requestBody.schema")
+    body_schema = _resolve_schema(
+        body_schema, document, f"{method.upper()} {path}.requestBody.schema"
+    )
     if body_schema.get("type") != "object":
-        raise _unsupported(f"{method.upper()} {path}.requestBody.schema", "must be an object")
+        raise _unsupported(
+            f"{method.upper()} {path}.requestBody.schema", "must be an object"
+        )
     _check_keys(
         body_schema,
         {"title", "description", "type", "properties", "required"},
@@ -186,14 +194,24 @@ def _parse_body_schema(
     )
     properties = body_schema.get("properties")
     if not isinstance(properties, dict):
-        raise _unsupported(f"{method.upper()} {path}.requestBody.schema.properties", "must be an object")
+        raise _unsupported(
+            f"{method.upper()} {path}.requestBody.schema.properties",
+            "must be an object",
+        )
     parsed = {
-        name: _validate_field_schema(schema, document, f"{method.upper()} {path}.body.{name}")
+        name: _validate_field_schema(
+            schema, document, f"{method.upper()} {path}.body.{name}"
+        )
         for name, schema in sorted(properties.items())
     }
     required = body_schema.get("required", [])
-    if not isinstance(required, list) or any(not isinstance(item, str) for item in required):
-        raise _unsupported(f"{method.upper()} {path}.requestBody.schema.required", "must be an array of strings")
+    if not isinstance(required, list) or any(
+        not isinstance(item, str) for item in required
+    ):
+        raise _unsupported(
+            f"{method.upper()} {path}.requestBody.schema.required",
+            "must be an array of strings",
+        )
     unknown_required = sorted(set(required) - set(parsed))
     if unknown_required:
         raise _unsupported(
@@ -201,7 +219,9 @@ def _parse_body_schema(
             f"required field(s) missing from properties: {', '.join(unknown_required)}",
         )
     if not isinstance(request_body.get("required", False), bool):
-        raise _unsupported(f"{method.upper()} {path}.requestBody.required", "must be boolean")
+        raise _unsupported(
+            f"{method.upper()} {path}.requestBody.required", "must be boolean"
+        )
     return parsed, set(required), request_body.get("required", False)
 
 
@@ -212,12 +232,19 @@ def _parse_path_parameters(
     combined: dict[str, dict[str, Any]] = {}
     for source in (path_item.get("parameters", []), operation.get("parameters", [])):
         if not isinstance(source, list):
-            raise _unsupported(f"{method.upper()} {path}.parameters", "must be an array")
+            raise _unsupported(
+                f"{method.upper()} {path}.parameters", "must be an array"
+            )
         for parameter in source:
             if not isinstance(parameter, dict):
-                raise _unsupported(f"{method.upper()} {path}.parameters", "parameter must be an object")
-            _check_keys(parameter, {"name", "in", "required", "description", "schema", "example"},
-                        f"{method.upper()} {path}.parameters")
+                raise _unsupported(
+                    f"{method.upper()} {path}.parameters", "parameter must be an object"
+                )
+            _check_keys(
+                parameter,
+                {"name", "in", "required", "description", "schema", "example"},
+                f"{method.upper()} {path}.parameters",
+            )
             if parameter.get("in") != "path":
                 raise _unsupported(
                     f"{method.upper()} {path}.parameters",
@@ -225,12 +252,19 @@ def _parse_path_parameters(
                 )
             name = parameter.get("name")
             if not isinstance(name, str) or not name:
-                raise _unsupported(f"{method.upper()} {path}.parameters", "parameter name is required")
+                raise _unsupported(
+                    f"{method.upper()} {path}.parameters", "parameter name is required"
+                )
             if parameter.get("required") is not True:
-                raise _unsupported(f"{method.upper()} {path}.parameters.{name}", "path parameters must be required")
+                raise _unsupported(
+                    f"{method.upper()} {path}.parameters.{name}",
+                    "path parameters must be required",
+                )
             schema = parameter.get("schema")
             if not isinstance(schema, dict):
-                raise _unsupported(f"{method.upper()} {path}.parameters.{name}", "schema is required")
+                raise _unsupported(
+                    f"{method.upper()} {path}.parameters.{name}", "schema is required"
+                )
             combined[name] = _validate_field_schema(
                 schema, document, f"{method.upper()} {path}.path.{name}"
             )
@@ -239,7 +273,9 @@ def _parse_path_parameters(
 
 def _valid_value(schema: dict[str, Any]) -> Any:
     if "enum" in schema:
-        return sorted(schema["enum"], key=lambda value: json.dumps(value, sort_keys=True))[0]
+        return sorted(
+            schema["enum"], key=lambda value: json.dumps(value, sort_keys=True)
+        )[0]
     schema_type = schema.get("type")
     if schema_type == "string":
         minimum = schema.get("minLength", 0)
@@ -288,8 +324,12 @@ def _add_case(
         "expected_valid": expected_valid,
         "name": name,
     }
-    canonical = json.dumps(identity, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
-    case_id = "BASE-" + hashlib.sha256(canonical.encode("utf-8")).hexdigest()[:12].upper()
+    canonical = json.dumps(
+        identity, sort_keys=True, separators=(",", ":"), ensure_ascii=False
+    )
+    case_id = (
+        "BASE-" + hashlib.sha256(canonical.encode("utf-8")).hexdigest()[:12].upper()
+    )
     cases.append(BaselineCase(
         case_id=case_id, name=name, method=method.upper(), path=path, kind=kind,
         field=field, path_parameters=path_parameters, body=body,
@@ -313,7 +353,9 @@ def _boundary_cases(
             params[field.removeprefix("path.")] = value
         elif body is not None:
             body[field.removeprefix("body.")] = value
-        _add_case(cases, method, path, "boundary", field, params, body, valid, description)
+        _add_case(
+            cases, method, path, "boundary", field, params, body, valid, description
+        )
 
     schema_type = schema.get("type")
     if schema_type == "string":
@@ -365,14 +407,21 @@ def generate_cases(document: dict[str, Any]) -> list[BaselineCase]:
         for method in sorted(set(path_item) & _HTTP_METHODS):
             operation = path_item[method]
             if not isinstance(operation, dict):
-                raise _unsupported(f"{method.upper()} {path}", "operation must be an object")
+                raise _unsupported(
+                    f"{method.upper()} {path}", "operation must be an object"
+                )
             _check_keys(
                 operation,
-                {"operationId", "summary", "description", "tags", "parameters",
-                 "requestBody", "responses", "deprecated", "security", "servers", "externalDocs"},
+                {
+                    "operationId", "summary", "description", "tags", "parameters",
+                    "requestBody", "responses", "deprecated", "security", "servers",
+                    "externalDocs",
+                },
                 f"{method.upper()} {path}",
             )
-            path_schemas = _parse_path_parameters(path_item, operation, document, method, path)
+            path_schemas = _parse_path_parameters(
+                path_item, operation, document, method, path
+            )
             body_schemas, required_fields, body_required = _parse_body_schema(
                 operation, document, method, path
             )
@@ -384,7 +433,10 @@ def generate_cases(document: dict[str, Any]) -> list[BaselineCase]:
                 if body_schemas is not None else None
             )
             if body_schemas is None and not base_path:
-                _add_case(cases, method, path, "valid", "request", {}, None, True, "valid request")
+                _add_case(
+                    cases, method, path, "valid", "request", {}, None, True,
+                    "valid request",
+                )
             else:
                 valid_field = "request body" if base_body is not None else (
                     "path." + next(iter(base_path))
@@ -397,7 +449,8 @@ def generate_cases(document: dict[str, Any]) -> list[BaselineCase]:
             if body_schemas is not None and base_body is not None:
                 for field, schema in body_schemas.items():
                     field_name = f"body.{field}"
-                    _add_case(cases, method, path, "invalid_type", field_name, base_path,
+                    _add_case(
+                        cases, method, path, "invalid_type", field_name, base_path,
                               {**base_body, field: _type_invalid(schema)}, False,
                               "invalid field type")
                     if field in required_fields:
@@ -429,5 +482,5 @@ def generate_cases(document: dict[str, Any]) -> list[BaselineCase]:
 
 
 def normalize_cases(cases: list[BaselineCase]) -> list[dict[str, Any]]:
-    """Return the canonical JSON-compatible representation used for repeatability checks."""
+    """Return canonical JSON-compatible cases for repeatability checks."""
     return [case.model_dump(mode="json") for case in cases]
