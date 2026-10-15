@@ -87,13 +87,6 @@
       },
       "ValidationError": {
         "properties": {
-          "ctx": {
-            "title": "Context",
-            "type": "object"
-          },
-          "input": {
-            "title": "Input"
-          },
           "loc": {
             "items": {
               "anyOf": [
@@ -113,7 +106,7 @@
             "type": "string"
           },
           "type": {
-            "title": "Type",
+            "title": "Error Type",
             "type": "string"
           }
         },
