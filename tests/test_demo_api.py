@@ -1,10 +1,14 @@
 """Contract tests for the local demo API."""
 
+import json
+from pathlib import Path
+
 from fastapi.testclient import TestClient
 
 from assay.demo_api import app
 
 client = TestClient(app)
+ROOT = Path(__file__).resolve().parents[1]
 
 
 def test_health_returns_ok() -> None:
@@ -37,6 +41,18 @@ def test_product_price_range_and_enum_are_enforced() -> None:
     ).status_code == 422
 
 
+def test_invalid_field_types_are_rejected() -> None:
+    assert client.post(
+        "/products",
+        json={"name": 123, "price": 2.5, "category": "book"},
+    ).status_code == 422
+    assert client.post(
+        "/products",
+        json={"name": "Valid", "price": "not-a-number", "category": "book"},
+    ).status_code == 422
+    assert client.patch("/products/1/stock", json={"quantity": "many"}).status_code == 422
+
+
 def test_product_requires_name() -> None:
     assert client.post(
         "/products", json={"price": 1, "category": "book"}
@@ -63,15 +79,29 @@ def test_order_quantity_range_and_unknown_product() -> None:
 
 
 def test_openapi_document_is_deterministic_and_matches_routes() -> None:
-    import json
-
     first = json.dumps(app.openapi(), sort_keys=True)
     second = json.dumps(app.openapi(), sort_keys=True)
     assert first == second
-    assert set(app.openapi()["paths"]) == {
+    expected_paths = {
         "/health",
         "/products",
         "/products/{product_id}",
         "/products/{product_id}/stock",
         "/orders",
+    }
+    assert set(app.openapi()["paths"]) == expected_paths
+
+    committed_spec = json.loads(
+        (ROOT / "specs" / "openapi.json").read_text(encoding="utf-8")
+    )
+    assert set(committed_spec["paths"]) == expected_paths
+    assert {
+        (path, method)
+        for path, item in committed_spec["paths"].items()
+        for method in item
+    } == {
+        (path, method)
+        for path, item in app.openapi()["paths"].items()
+        for method in item
+        if method in {"get", "post", "patch"}
     }
