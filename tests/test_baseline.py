@@ -1,0 +1,194 @@
+"""Tests for the offline OpenAPI schema baseline."""
+
+import builtins
+import json
+from pathlib import Path
+
+import pytest
+
+from assay.baseline import (
+    UnsupportedSchemaError,
+    generate_cases,
+    normalize_cases,
+)
+
+ROOT = Path(__file__).resolve().parents[1]
+
+
+def load_spec() -> dict:
+    return json.loads((ROOT / "specs" / "openapi.json").read_text(encoding="utf-8"))
+
+
+def test_two_runs_produce_identical_normalized_cases() -> None:
+    document = load_spec()
+    first = normalize_cases(generate_cases(document))
+    second = normalize_cases(generate_cases(document))
+
+    assert first == second
+    assert first == sorted(
+        first,
+        key=lambda case: (
+            case["method"],
+            case["path"],
+            case["field"],
+            case["kind"],
+            case["name"],
+            case["case_id"],
+        ),
+    )
+    assert len({case["case_id"] for case in first}) == len(first)
+
+
+def test_cases_cover_required_generation_categories() -> None:
+    cases = normalize_cases(generate_cases(load_spec()))
+    kinds = {case["kind"] for case in cases}
+
+    assert {
+        "valid",
+        "boundary",
+        "invalid_type",
+        "missing_required",
+        "invalid_enum",
+    } <= kinds
+    assert any(
+        case["kind"] == "invalid_enum"
+        and case["method"] == "POST"
+        and case["path"] == "/products"
+        and case["field"] == "body.category"
+        for case in cases
+    )
+    assert any(
+        case["kind"] == "missing_required"
+        and case["field"] == "body.name"
+        and "missing required field" in case["name"]
+        for case in cases
+    )
+
+
+def test_case_names_include_method_path_field_and_test_description() -> None:
+    for case in normalize_cases(generate_cases(load_spec())):
+        assert case["method"] in case["name"]
+        assert case["path"] in case["name"]
+        assert case["field"] in case["name"]
+        assert case["kind"] in {
+            "valid",
+            "boundary",
+            "invalid_type",
+            "missing_required",
+            "invalid_enum",
+        }
+        assert case["name"].split("—")[-1].strip()
+
+
+def test_string_boundaries_include_min_max_and_outside_values() -> None:
+    cases = normalize_cases(generate_cases(load_spec()))
+    product_names = [
+        case for case in cases
+        if case["path"] == "/products"
+        and case["field"] == "body.name"
+        and case["kind"] == "boundary"
+    ]
+
+    assert any(case["body"]["name"] == "xxx" and case["expected_valid"] for case in product_names)
+    assert any(case["body"]["name"] == "xx" and not case["expected_valid"] for case in product_names)
+    assert any(case["body"]["name"] == "x" * 40 and case["expected_valid"] for case in product_names)
+    assert any(case["body"]["name"] == "x" * 41 and not case["expected_valid"] for case in product_names)
+
+
+def test_numeric_boundaries_include_bounds_and_just_outside() -> None:
+    cases = normalize_cases(generate_cases(load_spec()))
+    prices = [
+        case for case in cases
+        if case["path"] == "/products"
+        and case["field"] == "body.price"
+        and case["kind"] == "boundary"
+    ]
+
+    assert any(case["body"]["price"] == 0 and not case["expected_valid"] for case in prices)
+    assert any(case["body"]["price"] == -0.01 and not case["expected_valid"] for case in prices)
+    assert any(case["body"]["price"] == 10000 and case["expected_valid"] for case in prices)
+    assert any(case["body"]["price"] == 10000.01 and not case["expected_valid"] for case in prices)
+
+
+def test_path_parameters_are_included_and_type_checked() -> None:
+    cases = normalize_cases(generate_cases(load_spec()))
+    valid = next(
+        case for case in cases
+        if case["method"] == "GET"
+        and case["path"] == "/products/{product_id}"
+        and case["kind"] == "valid"
+    )
+    invalid = next(
+        case for case in cases
+        if case["method"] == "GET"
+        and case["path"] == "/products/{product_id}"
+        and case["kind"] == "invalid_type"
+        and case["field"] == "path.product_id"
+    )
+
+    assert valid["path_parameters"] == {"product_id": 1}
+    assert invalid["path_parameters"] == {"product_id": "not-an-integer"}
+    assert invalid["expected_valid"] is False
+
+
+def test_generator_never_opens_criteria_yaml(monkeypatch: pytest.MonkeyPatch) -> None:
+    document = load_spec()
+    original_open = builtins.open
+    original_path_open = Path.open
+
+    def guard(file, *args, **kwargs):
+        if "criteria.yaml" in str(file).replace("\\", "/"):
+            raise AssertionError("baseline generator attempted to load criteria.yaml")
+        return original_open(file, *args, **kwargs)
+
+    def guard_path_open(self, *args, **kwargs):
+        if self.name == "criteria.yaml":
+            raise AssertionError("baseline generator attempted to load criteria.yaml")
+        return original_path_open(self, *args, **kwargs)
+
+    monkeypatch.setattr(builtins, "open", guard)
+    monkeypatch.setattr(Path, "open", guard_path_open)
+    assert generate_cases(document)
+
+
+@pytest.mark.parametrize(
+    ("mutate", "message"),
+    [
+        (
+            lambda spec: spec["paths"]["/products"]["post"]["parameters"].append(
+                {"name": "q", "in": "query", "required": False, "schema": {"type": "string"}}
+            ),
+            "only path parameters",
+        ),
+        (
+            lambda spec: spec["components"]["schemas"]["ProductCreate"]["properties"]["name"].update(
+                {"pattern": "^[A-Z]+$"}
+            ),
+            "pattern",
+        ),
+        (
+            lambda spec: spec["paths"]["/products"]["post"]["requestBody"]["content"].update(
+                {"text/plain": {"schema": {"type": "string"}}}
+            ),
+            "application/json",
+        ),
+        (
+            lambda spec: spec["components"]["schemas"]["ProductCreate"]["properties"]["name"].update(
+                {"type": "array", "items": {"type": "string"}}
+            ),
+            "items",
+        ),
+        (
+            lambda spec: spec["components"]["schemas"]["ProductCreate"]["properties"]["name"].update(
+                {"$ref": "#/components/schemas/MissingSchema"}
+            ),
+            "unresolved schema reference",
+        ),
+    ],
+)
+def test_unsupported_schema_constructs_fail_clearly(mutate, message: str) -> None:
+    document = load_spec()
+    mutate(document)
+
+    with pytest.raises(UnsupportedSchemaError, match=message):
+        generate_cases(document)
