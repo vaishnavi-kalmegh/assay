@@ -1,4 +1,132 @@
 {
+  "components": {
+    "schemas": {
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "title": "Detail",
+            "type": "array"
+          }
+        },
+        "title": "HTTPValidationError",
+        "type": "object"
+      },
+      "OrderCreate": {
+        "properties": {
+          "product_id": {
+            "exclusiveMinimum": 0.0,
+            "title": "Product Id",
+            "type": "integer"
+          },
+          "quantity": {
+            "maximum": 10.0,
+            "minimum": 1.0,
+            "title": "Quantity",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "product_id",
+          "quantity"
+        ],
+        "title": "OrderCreate",
+        "type": "object"
+      },
+      "ProductCategory": {
+        "enum": [
+          "book",
+          "game",
+          "stationery"
+        ],
+        "title": "ProductCategory",
+        "type": "string"
+      },
+      "ProductCreate": {
+        "properties": {
+          "category": {
+            "$ref": "#/components/schemas/ProductCategory"
+          },
+          "name": {
+            "maxLength": 40,
+            "minLength": 3,
+            "title": "Name",
+            "type": "string"
+          },
+          "price": {
+            "exclusiveMinimum": 0.0,
+            "maximum": 10000.0,
+            "title": "Price",
+            "type": "number"
+          }
+        },
+        "required": [
+          "name",
+          "price",
+          "category"
+        ],
+        "title": "ProductCreate",
+        "type": "object"
+      },
+      "StockUpdate": {
+        "properties": {
+          "quantity": {
+            "maximum": 1000.0,
+            "minimum": 0.0,
+            "title": "Quantity",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "quantity"
+        ],
+        "title": "StockUpdate",
+        "type": "object"
+      },
+      "ValidationError": {
+        "properties": {
+          "ctx": {
+            "title": "Context",
+            "type": "object"
+          },
+          "input": {
+            "title": "Input"
+          },
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "title": "Location",
+            "type": "array"
+          },
+          "msg": {
+            "title": "Message",
+            "type": "string"
+          },
+          "type": {
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError",
+        "type": "object"
+      }
+    }
+  },
   "info": {
     "description": "A local demo API with explicit validation rules for API testing.",
     "title": "assay Demo API",
@@ -8,69 +136,216 @@
   "paths": {
     "/health": {
       "get": {
+        "description": "Return a simple service health response.",
         "operationId": "health_health_get",
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "title": "Response Health Health Get",
+                  "type": "object"
+                }
+              }
+            },
             "description": "Successful Response"
           }
         },
-        "tags": ["health"]
+        "summary": "Health",
+        "tags": [
+          "health"
+        ]
       }
     },
     "/orders": {
       "post": {
+        "description": "Create an order for an existing product.",
         "operationId": "create_order_orders_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OrderCreate"
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
           "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Create Order Orders Post",
+                  "type": "object"
+                }
+              }
+            },
             "description": "Successful Response"
           },
           "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
             "description": "Validation Error"
           }
         },
-        "tags": ["orders"]
+        "summary": "Create Order",
+        "tags": [
+          "orders"
+        ]
       }
     },
     "/products": {
       "post": {
+        "description": "Create a product after validating its fields.",
         "operationId": "create_product_products_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProductCreate"
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
           "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Create Product Products Post",
+                  "type": "object"
+                }
+              }
+            },
             "description": "Successful Response"
           },
           "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
             "description": "Validation Error"
           }
         },
-        "tags": ["products"]
+        "summary": "Create Product",
+        "tags": [
+          "products"
+        ]
       }
     },
     "/products/{product_id}": {
       "get": {
+        "description": "Return a product or a 404 for an unknown ID.",
         "operationId": "get_product_products__product_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "product_id",
+            "required": true,
+            "schema": {
+              "title": "Product Id",
+              "type": "integer"
+            }
+          }
+        ],
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Get Product Products  Product Id  Get",
+                  "type": "object"
+                }
+              }
+            },
             "description": "Successful Response"
           },
           "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
             "description": "Validation Error"
           }
         },
-        "tags": ["products"]
+        "summary": "Get Product",
+        "tags": [
+          "products"
+        ]
       }
     },
     "/products/{product_id}/stock": {
       "patch": {
+        "description": "Set product stock to a validated quantity.",
         "operationId": "update_stock_products__product_id__stock_patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "product_id",
+            "required": true,
+            "schema": {
+              "title": "Product Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StockUpdate"
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Update Stock Products  Product Id  Stock Patch",
+                  "type": "object"
+                }
+              }
+            },
             "description": "Successful Response"
           },
           "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
             "description": "Validation Error"
           }
         },
-        "tags": ["products"]
+        "summary": "Update Stock",
+        "tags": [
+          "products"
+        ]
       }
     }
   }

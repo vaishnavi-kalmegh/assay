@@ -1,109 +1,151 @@
 criteria:
-  - id: REQ-001
-    method: GET
-    path: /health
-    field_rule: response.status
-    expected_status: 200
-    description: Health endpoint returns a successful status.
-  - id: REQ-002
-    method: GET
-    path: /health
-    field_rule: response.body.status == "ok"
-    expected_status: 200
-    description: Health endpoint returns status ok in its body.
-  - id: REQ-003
-    method: POST
-    path: /products
-    field_rule: request.name required
-    expected_status: 201
-    description: Product creation accepts a valid name.
-  - id: REQ-004
-    method: POST
-    path: /products
-    field_rule: request.name min_length=3
-    expected_status: 422
-    description: Product name shorter than three characters is rejected.
-  - id: REQ-005
-    method: POST
-    path: /products
-    field_rule: request.name max_length=40
-    expected_status: 422
-    description: Product name longer than forty characters is rejected.
-  - id: REQ-006
-    method: POST
-    path: /products
-    field_rule: request.price gt=0
-    expected_status: 422
-    description: Product price must be greater than zero.
-  - id: REQ-007
-    method: POST
-    path: /products
-    field_rule: request.price le=10000
-    expected_status: 422
-    description: Product price must not exceed 10000.
-  - id: REQ-008
-    method: POST
-    path: /products
-    field_rule: request.category enum(book,game,stationery)
-    expected_status: 201
-    description: Product category accepts a supported enum value.
-  - id: REQ-009
-    method: POST
-    path: /products
-    field_rule: request.category enum
-    expected_status: 422
-    description: Unsupported product category is rejected.
-  - id: REQ-010
-    method: POST
-    path: /products
-    field_rule: request.name missing
-    expected_status: 422
-    description: Missing product name is rejected.
-  - id: REQ-011
-    method: GET
-    path: /products/{product_id}
-    field_rule: response.body.id matches path.product_id
-    expected_status: 200
-    description: Existing product can be fetched by its identifier.
-  - id: REQ-012
-    method: GET
-    path: /products/{product_id}
-    field_rule: path.product_id unknown
-    expected_status: 404
-    description: Unknown product identifier returns not found.
-  - id: REQ-013
-    method: PATCH
-    path: /products/{product_id}/stock
-    field_rule: request.quantity ge=0
-    expected_status: 200
-    description: Stock quantity accepts zero.
-  - id: REQ-014
-    method: PATCH
-    path: /products/{product_id}/stock
-    field_rule: request.quantity le=1000
-    expected_status: 200
-    description: Stock quantity accepts the maximum supported value.
-  - id: REQ-015
-    method: PATCH
-    path: /products/{product_id}/stock
-    field_rule: request.quantity outside [0,1000]
-    expected_status: 422
-    description: Stock quantity outside the allowed range is rejected.
-  - id: REQ-016
-    method: POST
-    path: /orders
-    field_rule: request.quantity range[1,10]
-    expected_status: 201
-    description: Order creation accepts a quantity from one through ten.
-  - id: REQ-017
-    method: POST
-    path: /orders
-    field_rule: request.quantity outside [1,10]
-    expected_status: 422
-    description: Order quantity outside the allowed range is rejected.
-  - id: REQ-018
-    method: POST
-    path: /orders
-    field_rule: request.product_id unknown
-    expected_status: 404
-    description: Ordering an unknown product returns not found.
+- id: REQ-001
+  method: GET
+  path: /health
+  field: response.status
+  constraint: equals
+  value: 200
+  expected_status: 200
+  description: Health endpoint returns a successful status.
+- id: REQ-002
+  method: GET
+  path: /health
+  field: response.body.status
+  constraint: equals
+  value: ok
+  expected_status: 200
+  description: Health endpoint returns status ok in its body.
+- id: REQ-003
+  method: POST
+  path: /products
+  field: request.name
+  constraint: min_length
+  value: 3
+  expected_status: 201
+  description: Product creation accepts a name at the minimum valid length.
+- id: REQ-004
+  method: POST
+  path: /products
+  field: request.name
+  constraint: min_length
+  value: 3
+  expected_status: 422
+  description: Product name shorter than three characters is rejected.
+- id: REQ-005
+  method: POST
+  path: /products
+  field: request.name
+  constraint: max_length
+  value: 40
+  expected_status: 422
+  description: Product name longer than forty characters is rejected.
+- id: REQ-006
+  method: POST
+  path: /products
+  field: request.price
+  constraint: greater_than
+  value: 0
+  expected_status: 422
+  description: Product price must be greater than zero.
+- id: REQ-007
+  method: POST
+  path: /products
+  field: request.price
+  constraint: less_than_or_equal
+  value: 10000
+  expected_status: 422
+  description: Product price must not exceed 10000.
+- id: REQ-008
+  method: POST
+  path: /products
+  field: request.category
+  constraint: enum
+  value:
+  - book
+  - game
+  - stationery
+  expected_status: 201
+  description: Product category accepts a supported enum value.
+- id: REQ-009
+  method: POST
+  path: /products
+  field: request.category
+  constraint: enum
+  value:
+  - book
+  - game
+  - stationery
+  expected_status: 422
+  description: Unsupported product category is rejected.
+- id: REQ-010
+  method: POST
+  path: /products
+  field: request.name
+  constraint: required
+  value: true
+  expected_status: 422
+  description: Missing product name is rejected.
+- id: REQ-011
+  method: GET
+  path: /products/{product_id}
+  field: response.body.id
+  constraint: equals_path_parameter
+  value: product_id
+  expected_status: 200
+  description: Existing product can be fetched by its identifier.
+- id: REQ-012
+  method: GET
+  path: /products/{product_id}
+  field: path.product_id
+  constraint: not_found
+  value: 99999
+  expected_status: 404
+  description: Unknown product identifier returns not found.
+- id: REQ-013
+  method: PATCH
+  path: /products/{product_id}/stock
+  field: request.quantity
+  constraint: greater_than_or_equal
+  value: 0
+  expected_status: 200
+  description: Stock quantity accepts zero.
+- id: REQ-014
+  method: PATCH
+  path: /products/{product_id}/stock
+  field: request.quantity
+  constraint: less_than_or_equal
+  value: 1000
+  expected_status: 200
+  description: Stock quantity accepts the maximum supported value.
+- id: REQ-015
+  method: PATCH
+  path: /products/{product_id}/stock
+  field: request.quantity
+  constraint: greater_than_or_equal
+  value: 0
+  expected_status: 422
+  description: Negative stock quantity is rejected.
+- id: REQ-016
+  method: POST
+  path: /orders
+  field: request.quantity
+  constraint: less_than_or_equal
+  value: 10
+  expected_status: 201
+  description: Order creation accepts the maximum quantity of ten.
+- id: REQ-017
+  method: POST
+  path: /orders
+  field: request.quantity
+  constraint: greater_than_or_equal
+  value: 1
+  expected_status: 422
+  description: Order quantity below one is rejected.
+- id: REQ-018
+  method: POST
+  path: /orders
+  field: request.product_id
+  constraint: not_found
+  value: 99999
+  expected_status: 404
+  description: Ordering an unknown product returns not found.
