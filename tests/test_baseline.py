@@ -204,9 +204,9 @@ def test_generator_never_opens_criteria_yaml(monkeypatch: pytest.MonkeyPatch) ->
             "application/json",
         ),
         (
-            lambda spec: spec["components"]["schemas"]["ProductCreate"]["properties"]["name"].update(
-                {"type": "array", "items": {"type": "string"}}
-            ),
+            lambda spec: spec["components"]["schemas"]["ProductCreate"]["properties"][
+                "name"
+            ].update({"type": "array", "items": {"type": "string"}}),
             "items",
         ),
         (
