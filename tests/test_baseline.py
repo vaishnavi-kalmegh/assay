@@ -89,10 +89,22 @@ def test_string_boundaries_include_min_max_and_outside_values() -> None:
         and case["kind"] == "boundary"
     ]
 
-    assert any(case["body"]["name"] == "xxx" and case["expected_valid"] for case in product_names)
-    assert any(case["body"]["name"] == "xx" and not case["expected_valid"] for case in product_names)
-    assert any(case["body"]["name"] == "x" * 40 and case["expected_valid"] for case in product_names)
-    assert any(case["body"]["name"] == "x" * 41 and not case["expected_valid"] for case in product_names)
+    assert any(
+        case["body"]["name"] == "xxx" and case["expected_valid"]
+        for case in product_names
+    )
+    assert any(
+        case["body"]["name"] == "xx" and not case["expected_valid"]
+        for case in product_names
+    )
+    assert any(
+        case["body"]["name"] == "x" * 40 and case["expected_valid"]
+        for case in product_names
+    )
+    assert any(
+        case["body"]["name"] == "x" * 41 and not case["expected_valid"]
+        for case in product_names
+    )
 
 
 def test_numeric_boundaries_include_bounds_and_just_outside() -> None:
@@ -104,10 +116,22 @@ def test_numeric_boundaries_include_bounds_and_just_outside() -> None:
         and case["kind"] == "boundary"
     ]
 
-    assert any(case["body"]["price"] == 0 and not case["expected_valid"] for case in prices)
-    assert any(case["body"]["price"] == -0.01 and not case["expected_valid"] for case in prices)
-    assert any(case["body"]["price"] == 10000 and case["expected_valid"] for case in prices)
-    assert any(case["body"]["price"] == 10000.01 and not case["expected_valid"] for case in prices)
+    assert any(
+        case["body"]["price"] == 0 and not case["expected_valid"]
+        for case in prices
+    )
+    assert any(
+        case["body"]["price"] == -0.01 and not case["expected_valid"]
+        for case in prices
+    )
+    assert any(
+        case["body"]["price"] == 10000 and case["expected_valid"]
+        for case in prices
+    )
+    assert any(
+        case["body"]["price"] == 10000.01 and not case["expected_valid"]
+        for case in prices
+    )
 
 
 def test_path_parameters_are_included_and_type_checked() -> None:
@@ -156,18 +180,25 @@ def test_generator_never_opens_criteria_yaml(monkeypatch: pytest.MonkeyPatch) ->
     [
         (
             lambda spec: spec["paths"]["/products"]["post"]["parameters"].append(
-                {"name": "q", "in": "query", "required": False, "schema": {"type": "string"}}
+                {
+                    "name": "q", "in": "query", "required": False,
+                    "schema": {"type": "string"},
+                }
             ),
             "only path parameters",
         ),
         (
-            lambda spec: spec["components"]["schemas"]["ProductCreate"]["properties"]["name"].update(
+            lambda spec: spec["components"]["schemas"]["ProductCreate"]["properties"][
+                "name"
+            ].update(
                 {"pattern": "^[A-Z]+$"}
             ),
             "pattern",
         ),
         (
-            lambda spec: spec["paths"]["/products"]["post"]["requestBody"]["content"].update(
+            lambda spec: spec["paths"]["/products"]["post"]["requestBody"][
+                "content"
+            ].update(
                 {"text/plain": {"schema": {"type": "string"}}}
             ),
             "application/json",
@@ -179,7 +210,9 @@ def test_generator_never_opens_criteria_yaml(monkeypatch: pytest.MonkeyPatch) ->
             "items",
         ),
         (
-            lambda spec: spec["components"]["schemas"]["ProductCreate"]["properties"].__setitem__(
+            lambda spec: spec["components"]["schemas"]["ProductCreate"][
+                "properties"
+            ].__setitem__(
                 "name", {"$ref": "#/components/schemas/MissingSchema"}
             ),
             "unresolved schema reference",
