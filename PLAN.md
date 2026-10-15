@@ -49,17 +49,17 @@ Tests: deterministic placeholder smoke test.
 Pass: tests and lint exit 0; CI uses Python 3.11 and Ubuntu 24.04; dependency pins are exact; no secret or network service is needed for tests.
 Fail: any command fails, dependency is unpinned, or CI requires a secret.
 
-### M1 — Demo API (current)
+### M1 — Demo API (approved)
 Deliverable: five FastAPI endpoints with required-field, min/max, enum, and status-code rules; exported specs/openapi.json; criteria.yaml with 18 structured IDs; API and criteria tests.
 Run: pytest. Regenerate the spec with python scripts/export_openapi.py; repeated exports must be identical.
 Tests: valid input, missing fields, boundaries, invalid types/enums, expected statuses, unique and structurally valid criteria, repeatable OpenAPI output.
 Pass: all tests pass, spec export is reproducible, IDs are unique and criteria testable. Fail: unstable export or unclear contract.
 
-### M2 — Offline schema baseline
-Deliverable: parser and Pydantic case models generating valid, boundary, invalid-type, and missing-required-field cases without reading criteria.
-Run: pytest.
-Tests: supported schema shapes, boundary cases, unsupported-feature errors, repeatability.
-Pass: repeated runs produce equivalent normalized cases and criteria are not loaded. Fail: criteria leakage or silent misrepresentation.
+### M2 — Offline schema baseline (implemented; awaiting review)
+Deliverable: src/assay/baseline.py with Pydantic case models, deterministic IDs, normalized output, and a documented supported OpenAPI subset. Generates valid, boundary (bound and just outside), invalid-type, missing-required, and invalid-enum cases without reading criteria.
+Run: pytest tests/test_baseline.py, then pytest.
+Tests: path parameters, JSON object bodies, required fields, string and numeric bounds, enums, unsupported-feature errors, deterministic normalized output, and a guard proving criteria.yaml is never opened.
+Pass: repeated runs produce identical normalized cases; unsupported constructs raise UnsupportedSchemaError; CI is green. Fail: criteria leakage, unstable IDs/order, or silent schema misrepresentation.
 
 ### M3 — Exporter and runner
 Deliverable: ordinary runnable pytest files, requirement markers where mapped, demo API execution, JSON results.
