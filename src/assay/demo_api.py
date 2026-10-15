@@ -34,7 +34,13 @@ class OrderCreate(BaseModel):
 
 
 _PRODUCTS = {
-    1: {"id": 1, "name": "Notebook", "price": 5.5, "category": "stationery", "stock": 10},
+    1: {
+        "id": 1,
+        "name": "Notebook",
+        "price": 5.5,
+        "category": "stationery",
+        "stock": 10,
+    },
 }
 _NEXT_PRODUCT_ID = 2
 
