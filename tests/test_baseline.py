@@ -179,8 +179,8 @@ def test_generator_never_opens_criteria_yaml(monkeypatch: pytest.MonkeyPatch) ->
             "items",
         ),
         (
-            lambda spec: spec["components"]["schemas"]["ProductCreate"]["properties"]["name"].update(
-                {"$ref": "#/components/schemas/MissingSchema"}
+            lambda spec: spec["components"]["schemas"]["ProductCreate"]["properties"].__setitem__(
+                "name", {"$ref": "#/components/schemas/MissingSchema"}
             ),
             "unresolved schema reference",
         ),
