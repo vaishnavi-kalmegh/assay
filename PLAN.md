@@ -10,7 +10,7 @@ Build a small, explainable, offline-first tool that accepts an OpenAPI JSON docu
 2. Generate a schema-only baseline: valid examples, boundaries, invalid types, missing required fields, and invalid enum values. This stage must not read acceptance criteria.
 3. Map tests to criteria offline using an inspectable TF-IDF/cosine-similarity or keyword baseline.
 4. Identify criteria not adequately represented and conservatively plan extra tests using only evidence from criteria and the supported API schema.
-5. Export ordinary pytest files, tagging mapped tests with @pytest.mark.req("REQ-xxx").
+5. Export ordinary pytest files, tagging mapped tests with a pytest requirement marker such as req("REQ-xxx").
 6. Execute tests against the in-process/local demo API and write structured JSON results and a traceability matrix.
 7. Evaluate mapping quality on hand-labelled pairs, requirement coverage, and mutation score separately.
 8. Expose an optional LLM adapter interface with a disabled stub only. No real provider integration or network calls in the MVP.
@@ -19,13 +19,13 @@ Build a small, explainable, offline-first tool that accepts an OpenAPI JSON docu
 
 - src/assay/ — package and pipeline modules.
 - tests/ — unit and integration tests.
-- demo_api/ — local FastAPI app (M1).
-- specs/openapi.json — reproducible exported API spec (M1).
-- criteria.yaml — acceptance criteria with unique IDs (M1).
+- demo_api/ — local FastAPI app.
+- specs/openapi.json — reproducible exported API spec.
+- criteria.yaml — structured acceptance criteria with unique IDs.
 - data/labelled_pairs.csv — manually labelled pairs (M5).
 - docs/METRICS.md and docs/LABELLING.md — metric definitions and annotation protocol.
 - generated_tests/ and reports/ — runtime artifacts, ignored by Git.
-- .github/workflows/ci.yml — CI.
+- .github/workflows/ci.yml — CI pinned to Ubuntu 24.04.
 - pyproject.toml — package config, pinned dependencies, pytest, Ruff.
 
 ## Data flow
@@ -36,24 +36,24 @@ Criteria must never enter the baseline generator. Apply the same mapper after ge
 
 ## Dependencies and decisions
 
-Use Python 3.11+, FastAPI for the demo API only, Pydantic for typed models, pytest for execution and requirement markers, HTTPX for in-process API tests, PyYAML for criteria, scikit-learn for TF-IDF similarity, and Ruff for linting. Pin every dependency exactly with == when it is introduced. M0 intentionally pins only pytest and Ruff; add application dependencies in the milestone that first needs them. Prefer standard libraries and readable functions over extra abstractions. Sort outputs and fix any random seeds to preserve determinism.
+Use Python 3.11+, FastAPI for the demo API only, Pydantic for typed models, pytest for execution and requirement markers, HTTPX for in-process API tests, PyYAML for criteria, scikit-learn for TF-IDF similarity, and Ruff for linting. Pin every dependency exactly with == when it is introduced. M0 pinned only pytest and Ruff; M1 adds exact FastAPI, HTTPX, and PyYAML pins. Prefer standard libraries and readable functions over extra abstractions. Sort outputs and fix any random seeds to preserve determinism.
 
 ## Milestones
 
 Every milestone needs a deliverable, run command, automated tests, explicit pass/fail criteria, and one milestone commit. Fix any failure before adding features. Stop after each milestone and wait for review.
 
-### M0 — Skeleton (current)
+### M0 — Skeleton (approved)
 Deliverable: pyproject, pinned development dependencies, placeholder test, lint configuration, CI, README stub, and plan.
 Run: python -m pip install -e ".[dev]" && pytest && ruff check .
 Tests: deterministic placeholder smoke test.
-Pass: tests and lint exit 0; CI uses Python 3.11; dependency pins are exact; no secret or network service is needed for tests.
+Pass: tests and lint exit 0; CI uses Python 3.11 and Ubuntu 24.04; dependency pins are exact; no secret or network service is needed for tests.
 Fail: any command fails, dependency is unpinned, or CI requires a secret.
 
-### M1 — Demo API
-Deliverable: 4–5 FastAPI endpoints with real required-field, min/max, enum, and status-code rules; exported specs/openapi.json; criteria.yaml with about 15–20 IDs; API tests.
-Run: pytest.
-Tests: valid input, missing fields, boundaries, invalid types/enums, expected statuses.
-Pass: all API tests pass, spec export is reproducible, IDs are unique and criteria testable. Fail: unstable export or unclear contract.
+### M1 — Demo API (current)
+Deliverable: five FastAPI endpoints with required-field, min/max, enum, and status-code rules; exported specs/openapi.json; criteria.yaml with 18 structured IDs; API and criteria tests.
+Run: pytest. Regenerate the spec with python scripts/export_openapi.py; repeated exports must be identical.
+Tests: valid input, missing fields, boundaries, invalid types/enums, expected statuses, unique and structurally valid criteria, repeatable OpenAPI output.
+Pass: all tests pass, spec export is reproducible, IDs are unique and criteria testable. Fail: unstable export or unclear contract.
 
 ### M2 — Offline schema baseline
 Deliverable: parser and Pydantic case models generating valid, boundary, invalid-type, and missing-required-field cases without reading criteria.
@@ -93,11 +93,16 @@ Pass: reproducible numbers include sample sizes and limitations, metrics stay se
 - Mutation score = valid non-equivalent mutants killed / valid non-equivalent mutants executed.
 Mapping precision/recall apply only to the mapper on labelled pairs, not the schema-only baseline. Coverage, mapping quality, and mutation score must never be merged. docs/METRICS.md will provide worked examples and edge-case rules by M5. Do not claim improvements before running experiments; report measured counts, sample sizes, and limitations.
 
+**Evaluation caveat — partial circularity:** full-pipeline requirement coverage is partly circular because targeted tests are generated from the acceptance criteria being measured. Treat coverage as a traceability measure, not independent proof of test quality. Mutation score is the independent check on whether tests detect behavior changes.
+
+**Freeze before labelling:** freeze the generator implementation/configuration, generated test output, and test IDs before creating or finalizing the M5 labelled pairs. Do not revise generated test IDs or output after labels are collected without versioning the change and repeating the evaluation.
+
 ## Risks
 
 - OpenAPI variability: support a small subset first and explicitly reject unsupported constructs.
 - False matches: expose scores/thresholds and preserve unmapped criteria.
 - Misleading coverage: count passing tagged tests; report mapped-but-failing tests separately.
+- Circular coverage: disclose criteria-driven generation; use mutation score as the independent check.
 - Weak mutation validity: document hand-picked mutants and acknowledge they are not exhaustive.
 - Small single-labeller dataset: disclose limitations and measure self-agreement.
 - Nondeterminism: sort inputs/outputs, fix seeds, avoid timestamps in golden artifacts, test repeatability.
