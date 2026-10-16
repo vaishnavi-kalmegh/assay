@@ -19,6 +19,19 @@ def load_spec() -> dict:
     return json.loads((ROOT / "specs" / "openapi.json").read_text(encoding="utf-8"))
 
 
+def test_real_demo_spec_generates_cases_for_all_five_endpoints() -> None:
+    cases = generate_cases(load_spec())
+    endpoints = {(case.method, case.path) for case in cases}
+
+    assert endpoints == {
+        ("GET", "/health"),
+        ("POST", "/products"),
+        ("GET", "/products/{product_id}"),
+        ("PATCH", "/products/{product_id}/stock"),
+        ("POST", "/orders"),
+    }
+
+
 def test_two_runs_produce_identical_normalized_cases() -> None:
     document = load_spec()
     first = normalize_cases(generate_cases(document))
@@ -134,6 +147,112 @@ def test_numeric_boundaries_include_bounds_and_just_outside() -> None:
     )
 
 
+def test_numeric_boundary_semantics_and_integer_step() -> None:
+    document = {
+        "openapi": "3.1.0",
+        "info": {"title": "bounds test", "version": "1"},
+        "paths": {
+            "/bounds": {
+                "post": {
+                    "requestBody": {
+                        "required": True,
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "required": [
+                                        "exclusive_min",
+                                        "inclusive_min",
+                                        "inclusive_max",
+                                        "integer_min",
+                                    ],
+                                    "properties": {
+                                        "exclusive_min": {
+                                            "type": "number",
+                                            "exclusiveMinimum": 0,
+                                        },
+                                        "inclusive_min": {
+                                            "type": "number",
+                                            "minimum": 0,
+                                        },
+                                        "inclusive_max": {
+                                            "type": "number",
+                                            "maximum": 5,
+                                        },
+                                        "integer_min": {
+                                            "type": "integer",
+                                            "minimum": 2,
+                                        },
+                                    },
+                                }
+                            }
+                        },
+                    },
+                    "responses": {},
+                }
+            }
+        },
+    }
+    cases = normalize_cases(generate_cases(document))
+    boundaries = {
+        case["field"]: [
+            case for case in cases
+            if case["field"] == case_field and case["kind"] == "boundary"
+        ]
+        for case_field in (
+            "body.exclusive_min",
+            "body.inclusive_min",
+            "body.inclusive_max",
+            "body.integer_min",
+        )
+    }
+
+    exclusive_min = boundaries["body.exclusive_min"]
+    assert any(
+        case["body"]["exclusive_min"] == 0 and not case["expected_valid"]
+        for case in exclusive_min
+    )
+    assert any(
+        case["body"]["exclusive_min"] == 0.01 and case["expected_valid"]
+        and "just inside" in case["name"]
+        for case in exclusive_min
+    )
+    assert any(
+        case["body"]["exclusive_min"] == -0.01 and not case["expected_valid"]
+        for case in exclusive_min
+    )
+
+    inclusive_min = boundaries["body.inclusive_min"]
+    assert any(
+        case["body"]["inclusive_min"] == 0 and case["expected_valid"]
+        for case in inclusive_min
+    )
+    assert any(
+        case["body"]["inclusive_min"] == -0.01 and not case["expected_valid"]
+        for case in inclusive_min
+    )
+
+    inclusive_max = boundaries["body.inclusive_max"]
+    assert any(
+        case["body"]["inclusive_max"] == 5 and case["expected_valid"]
+        for case in inclusive_max
+    )
+    assert any(
+        case["body"]["inclusive_max"] == 5.01 and not case["expected_valid"]
+        for case in inclusive_max
+    )
+
+    integer_min = boundaries["body.integer_min"]
+    assert any(
+        case["body"]["integer_min"] == 2 and case["expected_valid"]
+        for case in integer_min
+    )
+    assert any(
+        case["body"]["integer_min"] == 1 and not case["expected_valid"]
+        for case in integer_min
+    )
+
+
 def test_path_parameters_are_included_and_type_checked() -> None:
     cases = normalize_cases(generate_cases(load_spec()))
     valid = next(
@@ -179,7 +298,9 @@ def test_generator_never_opens_criteria_yaml(monkeypatch: pytest.MonkeyPatch) ->
     ("mutate", "message"),
     [
         (
-            lambda spec: spec["paths"]["/products"]["post"]["parameters"].append(
+            lambda spec: spec["paths"]["/products"]["post"].setdefault(
+                "parameters", []
+            ).append(
                 {
                     "name": "q", "in": "query", "required": False,
                     "schema": {"type": "string"},
