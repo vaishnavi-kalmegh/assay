@@ -225,7 +225,7 @@ def test_numeric_boundary_semantics_and_integer_step() -> None:
     }
     cases = normalize_cases(generate_cases(document))
     boundaries = {
-        case["field"]: [
+        case_field: [
             case for case in cases
             if case["field"] == case_field and case["kind"] == "boundary"
         ]
