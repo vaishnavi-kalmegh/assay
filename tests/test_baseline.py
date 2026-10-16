@@ -1,6 +1,7 @@
 """Tests for the offline OpenAPI schema baseline."""
 
 import builtins
+import copy
 import json
 from pathlib import Path
 
@@ -30,6 +31,30 @@ def test_real_demo_spec_generates_cases_for_all_five_endpoints() -> None:
         ("PATCH", "/products/{product_id}/stock"),
         ("POST", "/orders"),
     }
+
+
+def test_benign_schema_metadata_is_ignored() -> None:
+    document = copy.deepcopy(load_spec())
+    name_schema = document["components"]["schemas"]["ProductCreate"][
+        "properties"
+    ]["name"]
+    name_schema.update(
+        {
+            "default": "sample",
+            "example": "sample name",
+            "examples": ["sample", "another sample"],
+            "description": "Metadata should not change input generation.",
+        }
+    )
+    category_ref = document["components"]["schemas"]["ProductCreate"][
+        "properties"
+    ]["category"]
+    category_ref.update({"title": "Category", "description": "Ignored ref metadata"})
+    document["paths"]["/products"]["post"]["requestBody"]["content"][
+        "application/json"
+    ]["examples"] = {"sample": {"value": {"name": "sample"}}}
+
+    assert generate_cases(document)
 
 
 def test_two_runs_produce_identical_normalized_cases() -> None:
@@ -165,6 +190,7 @@ def test_numeric_boundary_semantics_and_integer_step() -> None:
                                         "inclusive_min",
                                         "inclusive_max",
                                         "integer_min",
+                                        "exclusive_max",
                                     ],
                                     "properties": {
                                         "exclusive_min": {
@@ -182,6 +208,10 @@ def test_numeric_boundary_semantics_and_integer_step() -> None:
                                         "integer_min": {
                                             "type": "integer",
                                             "minimum": 2,
+                                        },
+                                        "exclusive_max": {
+                                            "type": "number",
+                                            "exclusiveMaximum": 5,
                                         },
                                     },
                                 }
@@ -204,6 +234,7 @@ def test_numeric_boundary_semantics_and_integer_step() -> None:
             "body.inclusive_min",
             "body.inclusive_max",
             "body.integer_min",
+            "body.exclusive_max",
         )
     }
 
@@ -250,6 +281,21 @@ def test_numeric_boundary_semantics_and_integer_step() -> None:
     assert any(
         case["body"]["integer_min"] == 1 and not case["expected_valid"]
         for case in integer_min
+    )
+
+    exclusive_max = boundaries["body.exclusive_max"]
+    assert any(
+        case["body"]["exclusive_max"] == 5 and not case["expected_valid"]
+        for case in exclusive_max
+    )
+    assert any(
+        case["body"]["exclusive_max"] == 4.99 and case["expected_valid"]
+        and "just inside" in case["name"]
+        for case in exclusive_max
+    )
+    assert any(
+        case["body"]["exclusive_max"] == 5.01 and not case["expected_valid"]
+        for case in exclusive_max
     )
 
 
