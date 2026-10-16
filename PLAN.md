@@ -55,17 +55,18 @@ Run: pytest. Regenerate the spec with python scripts/export_openapi.py; repeated
 Tests: valid input, missing fields, boundaries, invalid types/enums, expected statuses, unique and structurally valid criteria, repeatable OpenAPI output.
 Pass: all tests pass, spec export is reproducible, IDs are unique and criteria testable. Fail: unstable export or unclear contract.
 
-### M2 — Offline schema baseline (implemented; awaiting review)
+### M2 — Offline schema baseline (approved)
 Deliverable: src/assay/baseline.py with Pydantic case models, deterministic IDs, normalized output, and a documented supported OpenAPI subset. Generates valid, boundary (bound and just outside), invalid-type, missing-required, and invalid-enum cases without reading criteria.
 Run: pytest tests/test_baseline.py, then pytest.
 Tests: path parameters, JSON object bodies, required fields, string and numeric bounds, enums, unsupported-feature errors, deterministic normalized output, and a guard proving criteria.yaml is never opened.
 Pass: repeated runs produce identical normalized cases; unsupported constructs raise UnsupportedSchemaError; CI is green. Fail: criteria leakage, unstable IDs/order, or silent schema misrepresentation.
 
-### M3 — Exporter and runner
-Deliverable: ordinary runnable pytest files, requirement markers where mapped, demo API execution, JSON results.
-Run: pytest plus documented export/run CLI.
-Tests: collection, marker correctness, result schema, deterministic output.
-Pass: generated tests run locally and each result traces to a case. Fail: tests cannot collect or execution needs hosted services.
+### M3 — Exporter and runner (implemented; awaiting review)
+Deliverable: src/assay/runner.py and the `assay` CLI (`export`, `run`); ordinary pytest files, one per operation, plus conftest.py, pytest.ini and manifest.json; optional requirement markers from a mapping file; JSON results; `create_app()` factory in the demo API so each test has its own state. Documented in docs/RUNNER.md.
+Run: pytest, then `assay run`.
+Tests: expected-status derivation, deterministic export, stale-file and overwrite protection, marker correctness, mapping validation, result schema, run-to-run identical results, reverse-order execution, a wrong API response reported as a failure, criteria.yaml never opened, CLI exit codes.
+Pass: generated tests run locally against the demo API and each result traces to a baseline case ID; export and results are byte-identical across runs; specs/openapi.json is unchanged by the factory refactor. Fail: tests cannot collect, execution needs hosted services, or results cannot be traced to cases.
+Finding: the first end-to-end run exposed an M2 defect. FastAPI writes integer bounds as floats (1 as 1.0), so the baseline generated float values for integer fields. Integral float bounds on integer fields are now converted to ints and fractional ones are rejected; affected case IDs changed. Case IDs are frozen from M5 labelling onward.
 
 ### M4 — Requirement mapping
 Deliverable: offline TF-IDF/keyword mapper, traceability matrix, coverage-gap report, disabled LLM stub.
