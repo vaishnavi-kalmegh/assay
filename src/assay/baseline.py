@@ -45,6 +45,7 @@ _SCHEMA_KEYS = {
     "title",
     "description",
     "default",
+    "example",
     "examples",
     "type",
     "properties",
@@ -88,8 +89,13 @@ def _resolve_schema(
     _check_keys(schema, _SCHEMA_KEYS, where)
     if "$ref" not in schema:
         return schema
-    if len(schema) != 1:
-        raise _unsupported(where, "$ref cannot be combined with sibling keywords")
+    substantive_siblings = set(schema) - {"$ref", "title", "description", "default", "example", "examples"}
+    if substantive_siblings:
+        raise _unsupported(
+            where,
+            "$ref cannot be combined with schema constraints: "
+            + ", ".join(sorted(substantive_siblings)),
+        )
     reference = schema["$ref"]
     prefix = "#/components/schemas/"
     if not isinstance(reference, str) or not reference.startswith(prefix):
