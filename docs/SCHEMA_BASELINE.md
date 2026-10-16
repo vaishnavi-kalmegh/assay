@@ -48,3 +48,10 @@ canonical JSON-compatible representation for deterministic comparisons.
 
 This is the schema-only baseline stage. Criteria mapping and generated pytest
 files are deliberately out of scope here.
+
+## Integer bounds
+
+Generators such as FastAPI write the integer bound 1 as 1.0. For `integer` fields,
+whole-number float bounds are converted to ints so generated values and case names
+stay integers. A fractional bound on an integer field (for example `maximum: 10.5`)
+raises UnsupportedSchemaError because the intended boundary is ambiguous.
