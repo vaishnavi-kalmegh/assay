@@ -8,7 +8,7 @@ The MVP is deterministic and fully offline. No API key is required. Optional LLM
 
 ## Status
 
-Milestone 2 — deterministic offline OpenAPI schema baseline. See docs/SCHEMA_BASELINE.md for the supported subset and case categories, and PLAN.md for the project roadmap.
+Milestone 3 — pytest exporter and runner on top of the offline schema baseline. See docs/SCHEMA_BASELINE.md for the supported subset and case categories, docs/RUNNER.md for the generated tests and results format, and PLAN.md for the project roadmap.
 
 ## Development
 
@@ -22,5 +22,6 @@ Requires Python 3.11 or newer.
     pytest
     ruff check .
     python scripts/export_openapi.py
+    assay run  # export, run and report the generated baseline tests
 
 The OpenAPI export is sorted and deterministic. CI runs on Ubuntu 24.04. The schema-only baseline uses only the OpenAPI document and never reads criteria.yaml. It generates normalized valid, boundary, invalid-type, missing-required, and invalid-enum cases; unsupported schema constructs fail with UnsupportedSchemaError.
