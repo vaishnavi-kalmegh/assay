@@ -399,13 +399,14 @@ def _boundary_cases(
                     False,
                 )
             else:
+                inside_direction = 1 if key == "exclusiveMinimum" else -1
                 emit(
-                    bound - direction * step,
+                    bound - inside_direction * step,
                     f"just outside {label} {bound}",
                     False,
                 )
                 emit(
-                    bound + direction * step,
+                    bound + inside_direction * step,
                     f"just inside {label} {bound}",
                     True,
                 )
