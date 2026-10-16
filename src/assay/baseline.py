@@ -115,6 +115,26 @@ def _resolve_schema(
     return _resolve_schema(target, document, f"components.schemas.{name}")
 
 
+def _integral_bounds(schema: dict[str, Any], where: str) -> dict[str, Any]:
+    """Return a copy of an integer schema whose numeric bounds are ints.
+
+    Generators such as FastAPI write the integer bound 1 as 1.0. Using 1.0 would
+    make every generated value for an integer field a float, so whole-number float
+    bounds are converted to ints. A fractional bound on an integer field is
+    ambiguous, so it is rejected instead of guessed.
+    """
+    normalized = dict(schema)
+    for key in ("minimum", "maximum", "exclusiveMinimum", "exclusiveMaximum"):
+        value = normalized.get(key)
+        if isinstance(value, float):
+            if not value.is_integer():
+                raise _unsupported(
+                    where, f"{key} must be a whole number for integer fields: {value!r}"
+                )
+            normalized[key] = int(value)
+    return normalized
+
+
 def _validate_field_schema(
     schema: dict[str, Any], document: dict[str, Any], where: str
 ) -> dict[str, Any]:
@@ -150,6 +170,8 @@ def _validate_field_schema(
         for key in ("minimum", "maximum", "exclusiveMinimum", "exclusiveMaximum"):
             if key in resolved and not isinstance(resolved[key], (int, float)):
                 raise _unsupported(where, f"{key} must be numeric")
+        if schema_type == "integer":
+            resolved = _integral_bounds(resolved, where)
         low = resolved.get("exclusiveMinimum", resolved.get("minimum"))
         high = resolved.get("exclusiveMaximum", resolved.get("maximum"))
         if low is not None and high is not None and low > high:

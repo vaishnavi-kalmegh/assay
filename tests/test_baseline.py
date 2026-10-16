@@ -392,3 +392,37 @@ def test_unsupported_schema_constructs_fail_clearly(mutate, message: str) -> Non
 
     with pytest.raises(UnsupportedSchemaError, match=message):
         generate_cases(document)
+
+
+def test_integer_fields_get_int_values_when_bounds_are_written_as_floats() -> None:
+    # FastAPI writes the integer bound 1 as 1.0 in its OpenAPI output.
+    document = load_spec()
+    order = document["components"]["schemas"]["OrderCreate"]["properties"]
+    assert isinstance(order["product_id"]["exclusiveMinimum"], float)
+    assert isinstance(order["quantity"]["maximum"], float)
+
+    cases = [
+        case
+        for case in generate_cases(document)
+        if (case.method, case.path) == ("POST", "/orders")
+    ]
+    values = [
+        case.body[field]
+        for case in cases
+        if case.body is not None and case.kind != "invalid_type"
+        for field in ("product_id", "quantity")
+        if field in case.body
+    ]
+    assert values
+    assert all(type(value) is int for value in values), values
+    assert not any("0.0" in case.name for case in cases)
+
+
+def test_fractional_bound_on_integer_field_is_rejected() -> None:
+    document = load_spec()
+    document["components"]["schemas"]["OrderCreate"]["properties"]["quantity"][
+        "maximum"
+    ] = 10.5
+
+    with pytest.raises(UnsupportedSchemaError, match="whole number"):
+        generate_cases(document)

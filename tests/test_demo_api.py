@@ -5,7 +5,7 @@ from pathlib import Path
 
 from fastapi.testclient import TestClient
 
-from assay.demo_api import app
+from assay.demo_api import app, create_app
 
 client = TestClient(app)
 ROOT = Path(__file__).resolve().parents[1]
@@ -125,3 +125,39 @@ def test_openapi_request_schemas_have_expected_constraints() -> None:
     assert order["product_id"]["exclusiveMinimum"] == 0
     assert order["quantity"]["minimum"] == 1
     assert order["quantity"]["maximum"] == 10
+
+
+def test_apps_from_the_factory_do_not_share_state() -> None:
+    first = TestClient(create_app(seeded=False))
+    second = TestClient(create_app(seeded=False))
+
+    created = first.post(
+        "/products", json={"name": "Pencil", "price": 2.5, "category": "book"}
+    )
+
+    assert created.status_code == 201
+    product_id = created.json()["id"]
+    assert first.get(f"/products/{product_id}").status_code == 200
+    assert second.get(f"/products/{product_id}").status_code == 404
+
+
+def test_unseeded_app_starts_empty_and_issues_id_one_first() -> None:
+    fresh = TestClient(create_app(seeded=False))
+
+    assert fresh.get("/products/1").status_code == 404
+    created = fresh.post(
+        "/products", json={"name": "Pencil", "price": 2.5, "category": "book"}
+    )
+    assert created.json()["id"] == 1
+
+
+def test_seeded_app_keeps_the_notebook_and_issues_id_two_next() -> None:
+    seeded = TestClient(create_app())
+
+    notebook = seeded.get("/products/1")
+    assert notebook.status_code == 200
+    assert notebook.json()["name"] == "Notebook"
+    created = seeded.post(
+        "/products", json={"name": "Pencil", "price": 2.5, "category": "book"}
+    )
+    assert created.json()["id"] == 2
