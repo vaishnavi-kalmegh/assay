@@ -89,7 +89,9 @@ def _resolve_schema(
     _check_keys(schema, _SCHEMA_KEYS, where)
     if "$ref" not in schema:
         return schema
-    ignored_ref_metadata = {"$ref", "title", "description", "default", "example", "examples"}
+    ignored_ref_metadata = {
+        "$ref", "title", "description", "default", "example", "examples"
+    }
     substantive_siblings = set(schema) - ignored_ref_metadata
     if substantive_siblings:
         raise _unsupported(
