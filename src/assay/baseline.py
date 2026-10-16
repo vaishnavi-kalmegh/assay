@@ -44,6 +44,8 @@ _SCHEMA_KEYS = {
     "$ref",
     "title",
     "description",
+    "default",
+    "examples",
     "type",
     "properties",
     "required",
@@ -170,12 +172,15 @@ def _parse_body_schema(
         raise _unsupported(
             f"{method.upper()} {path}.requestBody", "media type must be an object"
         )
-    _check_keys(media, {"schema", "example", "examples", "encoding"},
-                f"{method.upper()} {path}.requestBody.application/json")
-    if set(media) - {"schema"}:
+    _check_keys(
+        media,
+        {"schema", "example", "examples", "encoding"},
+        f"{method.upper()} {path}.requestBody.application/json",
+    )
+    if "encoding" in media:
         raise _unsupported(
             f"{method.upper()} {path}.requestBody.application/json",
-            "examples and encoding are not supported",
+            "encoding is not supported",
         )
     body_schema = media.get("schema")
     if not isinstance(body_schema, dict):
@@ -379,9 +384,25 @@ def _boundary_cases(
             if key not in schema:
                 continue
             bound = schema[key]
-            valid_at_bound = key in {"minimum", "maximum"}
-            emit(bound, f"{label} boundary {bound}", valid_at_bound)
-            emit(bound + direction * step, f"just outside {label} {bound}", False)
+            inclusive = key in {"minimum", "maximum"}
+            emit(bound, f"{label} boundary {bound}", inclusive)
+            if inclusive:
+                emit(
+                    bound + direction * step,
+                    f"just outside {label} {bound}",
+                    False,
+                )
+            else:
+                emit(
+                    bound - direction * step,
+                    f"just outside {label} {bound}",
+                    False,
+                )
+                emit(
+                    bound + direction * step,
+                    f"just inside {label} {bound}",
+                    True,
+                )
 
 
 def generate_cases(document: dict[str, Any]) -> list[BaselineCase]:
