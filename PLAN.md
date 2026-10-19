@@ -36,7 +36,7 @@ Criteria must never enter the baseline generator. Apply the same mapper after ge
 
 ## Dependencies and decisions
 
-Use Python 3.11+, FastAPI for the demo API only, Pydantic for typed models, pytest for execution and requirement markers, HTTPX for in-process API tests, PyYAML for criteria, scikit-learn for TF-IDF similarity, and Ruff for linting. Pin every dependency exactly with == when it is introduced. M0 pinned only pytest and Ruff; M1 adds exact FastAPI, HTTPX, and PyYAML pins. Prefer standard libraries and readable functions over extra abstractions. Sort outputs and fix any random seeds to preserve determinism.
+Use Python 3.11+, FastAPI for the demo API only, Pydantic for typed models, pytest for execution and requirement markers, HTTPX for in-process API tests, PyYAML for criteria, scikit-learn for TF-IDF similarity, and Ruff for linting. Pin every dependency exactly with == when it is introduced. M0 pinned only pytest and Ruff; M1 adds exact FastAPI, HTTPX, and PyYAML pins; M4 adds exact scikit-learn. Prefer standard libraries and readable functions over extra abstractions. Sort outputs and fix any random seeds to preserve determinism.
 
 ## Milestones
 
@@ -61,18 +61,20 @@ Run: pytest tests/test_baseline.py, then pytest.
 Tests: path parameters, JSON object bodies, required fields, string and numeric bounds, enums, unsupported-feature errors, deterministic normalized output, and a guard proving criteria.yaml is never opened.
 Pass: repeated runs produce identical normalized cases; unsupported constructs raise UnsupportedSchemaError; CI is green. Fail: criteria leakage, unstable IDs/order, or silent schema misrepresentation.
 
-### M3 — Exporter and runner (implemented; awaiting review)
+### M3 — Exporter and runner (approved)
 Deliverable: src/assay/runner.py and the `assay` CLI (`export`, `run`); ordinary pytest files, one per operation, plus conftest.py, pytest.ini and manifest.json; optional requirement markers from a mapping file; JSON results; `create_app()` factory in the demo API so each test has its own state. Documented in docs/RUNNER.md.
 Run: pytest, then `assay run`.
 Tests: expected-status derivation, deterministic export, stale-file and overwrite protection, marker correctness, mapping validation, result schema, run-to-run identical results, reverse-order execution, a wrong API response reported as a failure, criteria.yaml never opened, CLI exit codes.
 Pass: generated tests run locally against the demo API and each result traces to a baseline case ID; export and results are byte-identical across runs; specs/openapi.json is unchanged by the factory refactor. Fail: tests cannot collect, execution needs hosted services, or results cannot be traced to cases.
 Finding: the first end-to-end run exposed an M2 defect. FastAPI writes integer bounds as floats (1 as 1.0), so the baseline generated float values for integer fields. Integral float bounds on integer fields are now converted to ints and fractional ones are rejected; affected case IDs changed. Case IDs are frozen from M5 labelling onward.
 
-### M4 — Requirement mapping
-Deliverable: offline TF-IDF/keyword mapper, traceability matrix, coverage-gap report, disabled LLM stub.
-Run: pytest plus mapping CLI.
-Tests: positive/negative examples, ranking, threshold, unknown IDs, gap reporting, stub disabled.
-Pass: stable offline mapping and visible uncovered criteria. Fail: missing gaps, nondeterminism, or provider calls.
+### M4 — Requirement mapping (implemented; awaiting review)
+Deliverable: src/assay/mapping.py and `assay map` (the CLI now lives in src/assay/cli.py); eligibility filter (same operation, expected status, checked content, field) plus TF-IDF ranking and a threshold; mapping.json (runner format), traceability.json with every eligible candidate and score, report.md with the gap list and reasons; disabled LLM mapper stub. Documented in docs/MAPPING.md.
+Run: pytest, then `assay map`, then `assay run --mapping reports/mapping/mapping.json`.
+Tests: eligibility and each gap reason, ranking and tie-breaks, threshold boundary and top-k, invalid settings and duplicate IDs, positive and negative examples on the demo data, determinism, mapping accepted by the runner and tags tests, stub disabled with no network, CLI behavior. The tests were checked by deliberately breaking six rules of the mapper and confirming a test fails each time.
+Pass: mapping is identical across runs; uncovered criteria are listed with a reason; no provider calls. Fail: missing gaps, nondeterminism, or provider calls.
+Finding: the first version mapped REQ-010 ("missing product name") to the missing-price and missing-category tests too, because "missing required" dominated the text similarity. A test targeting one field can no longer verify a criterion about another.
+Limitation: the default threshold (0.4) is provisional and was chosen after seeing the demo score table; M5 re-chooses it on labelled data and freezes it.
 
 ### M5 — Evaluation harness
 Deliverable: 30–40 hand-labelled pairs in CSV; LABELLING.md; 5–10 switchable demo API mutants; metric code and tests.
@@ -124,3 +126,4 @@ Dashboard/web UI, multi-agent systems, GraphQL, multiple or real LLM providers, 
 6. Passing tests: a requirement is covered only if at least one passing test is tagged to it; report mapped-but-failing tests separately.
 7. Mutation denominator: use valid, non-equivalent mutants selected for the run. Setup errors do not count as kills.
 8. CI: run tests without external services; write generated artifacts to temporary or ignored directories.
+9. Targeted-test generator (unscheduled): the "full pipeline" in open decision 2 adds tests for criteria the baseline does not cover, but no milestone builds that generator, and M6 compares baseline against it. The criteria the baseline cannot cover today are REQ-002, REQ-011 (response body content) and REQ-012, REQ-018 (404 for an unknown ID). Proposed default: add a milestone between M5 and M6 that generates tests only from structured criteria fields, never from guessed behavior. Needs a decision before M6.
