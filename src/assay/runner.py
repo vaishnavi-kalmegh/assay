@@ -441,11 +441,8 @@ def run(
     return run_tests(output_dir, entries, results_path)
 
 
-def _build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(
-        prog="assay", description="Export and run baseline API tests offline."
-    )
-    commands = parser.add_subparsers(dest="command", required=True)
+def register_commands(commands: Any) -> None:
+    """Add the `export` and `run` subcommands to the assay CLI."""
     for name, help_text in (
         ("export", "write generated pytest files"),
         ("run", "write generated pytest files, run them, and write results"),
@@ -465,12 +462,18 @@ def _build_parser() -> argparse.ArgumentParser:
                 type=Path,
                 default=Path("reports/baseline-results.json"),
             )
+
+
+def _build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        prog="assay", description="Export and run baseline API tests offline."
+    )
+    register_commands(parser.add_subparsers(dest="command", required=True))
     return parser
 
 
-def main(argv: list[str] | None = None) -> int:
-    """Command-line entry point: 0 success, 1 failing tests, 2 error."""
-    arguments = _build_parser().parse_args(argv)
+def handle(arguments: argparse.Namespace) -> int:
+    """Run `assay export` or `assay run`: 0 success, 1 failing tests, 2 error."""
     try:
         if arguments.command == "export":
             entries = export_tests(arguments.spec, arguments.output, arguments.mapping)
@@ -489,6 +492,11 @@ def main(argv: list[str] | None = None) -> int:
     print(f"Ran {summary['total']} generated tests: {outcomes}")
     print(f"Results written to {arguments.results}")
     return 0 if summary.get("passed", 0) == summary["total"] else 1
+
+
+def main(argv: list[str] | None = None) -> int:
+    """Command-line entry point for export and run."""
+    return handle(_build_parser().parse_args(argv))
 
 
 if __name__ == "__main__":
