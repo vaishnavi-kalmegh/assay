@@ -1,10 +1,10 @@
-"""The `assay` command line: export, run and map."""
+"""The `assay` command line: export, run, map and evaluate."""
 
 from __future__ import annotations
 
 import argparse
 
-from assay import mapping, runner
+from assay import evaluation, mapping, runner
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -16,9 +16,12 @@ def main(argv: list[str] | None = None) -> int:
     commands = parser.add_subparsers(dest="command", required=True)
     runner.register_commands(commands)
     mapping.register_commands(commands)
+    evaluation.register_commands(commands)
     arguments = parser.parse_args(argv)
     if arguments.command == "map":
         return mapping.handle(arguments)
+    if arguments.command == "evaluate":
+        return evaluation.handle(arguments)
     return runner.handle(arguments)
 
 
