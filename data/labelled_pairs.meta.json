@@ -1,0 +1,10 @@
+{
+  "case_id_fingerprint": "6b044adc502881259b729313410abd702b43603890fad93ed891afdabf879422",
+  "pairs": 40,
+  "seed": 1,
+  "splits": {
+    "dev": 20,
+    "test": 20
+  },
+  "tests": 43
+}

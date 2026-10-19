@@ -8,7 +8,7 @@ The MVP is deterministic and fully offline. No API key is required. Optional LLM
 
 ## Status
 
-Milestone 4 — offline requirement mapping with a traceability matrix and gap report, on top of the pytest exporter and runner and the schema baseline. See docs/SCHEMA_BASELINE.md, docs/RUNNER.md and docs/MAPPING.md, and PLAN.md for the project roadmap.
+Milestone 5 — evaluation harness (metrics, hand-written API mutants, a blind labelling sheet) on top of offline requirement mapping, the pytest exporter and runner and the schema baseline. Labelling is still to be done, so no mapping precision or recall exists yet. See docs/SCHEMA_BASELINE.md, docs/RUNNER.md, docs/MAPPING.md, docs/METRICS.md and docs/LABELLING.md, and PLAN.md for the project roadmap.
 
 ## Development
 
@@ -24,5 +24,6 @@ Requires Python 3.11 or newer.
     python scripts/export_openapi.py
     assay run  # export, run and report the generated baseline tests
     assay map  # map criteria.yaml to those tests and report the gaps
+    assay evaluate mutants  # run the tests against 10 hand-written API mutants
 
 The OpenAPI export is sorted and deterministic. CI runs on Ubuntu 24.04. The schema-only baseline uses only the OpenAPI document and never reads criteria.yaml. It generates normalized valid, boundary, invalid-type, missing-required, and invalid-enum cases; unsupported schema constructs fail with UnsupportedSchemaError.
