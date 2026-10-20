@@ -51,6 +51,8 @@ markers =
 _CONFTEST = '''\
 """Shared fixtures for assay-generated tests. Generated; do not edit."""
 
+import os
+
 import pytest
 from fastapi.testclient import TestClient
 
@@ -59,8 +61,13 @@ from assay.demo_api import create_app
 
 @pytest.fixture
 def client():
-    """A client for a brand-new, empty demo API. Nothing is shared between tests."""
-    return TestClient(create_app(seeded=False))
+    """A client for a brand-new, empty demo API. Nothing is shared between tests.
+
+    ASSAY_MUTANT is set only by `assay evaluate mutants`; unset means the real API.
+    """
+    return TestClient(
+        create_app(seeded=False, mutant=os.environ.get("ASSAY_MUTANT") or None)
+    )
 
 
 @pytest.fixture
@@ -363,12 +370,23 @@ def _read_junit(junit_path: Path) -> dict[str, dict[str, Any]]:
 
 
 def run_tests(
-    output_dir: Path, entries: list[ManifestEntry], results_path: Path
+    output_dir: Path,
+    entries: list[ManifestEntry],
+    results_path: Path,
+    mutant: str | None = None,
 ) -> dict[str, Any]:
-    """Run the generated suite with pytest and write sorted JSON results."""
+    """Run the generated suite with pytest and write sorted JSON results.
+
+    ``mutant`` names a demo API mutant to run against (None is the real API). The
+    environment variable is always set or cleared here so a stray value in the
+    caller's shell can never turn a mutant on silently.
+    """
     output_dir = Path(output_dir)
     junit_path = output_dir / "junit.xml"
     environment = {**os.environ, "PYTHONDONTWRITEBYTECODE": "1"}
+    environment.pop("ASSAY_MUTANT", None)
+    if mutant is not None:
+        environment["ASSAY_MUTANT"] = mutant
     completed = subprocess.run(
         [
             sys.executable,

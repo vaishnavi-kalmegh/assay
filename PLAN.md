@@ -68,7 +68,7 @@ Tests: expected-status derivation, deterministic export, stale-file and overwrit
 Pass: generated tests run locally against the demo API and each result traces to a baseline case ID; export and results are byte-identical across runs; specs/openapi.json is unchanged by the factory refactor. Fail: tests cannot collect, execution needs hosted services, or results cannot be traced to cases.
 Finding: the first end-to-end run exposed an M2 defect. FastAPI writes integer bounds as floats (1 as 1.0), so the baseline generated float values for integer fields. Integral float bounds on integer fields are now converted to ints and fractional ones are rejected; affected case IDs changed. Case IDs are frozen from M5 labelling onward.
 
-### M4 — Requirement mapping (implemented; awaiting review)
+### M4 — Requirement mapping (approved)
 Deliverable: src/assay/mapping.py and `assay map` (the CLI now lives in src/assay/cli.py); eligibility filter (same operation, expected status, checked content, field) plus TF-IDF ranking and a threshold; mapping.json (runner format), traceability.json with every eligible candidate and score, report.md with the gap list and reasons; disabled LLM mapper stub. Documented in docs/MAPPING.md.
 Run: pytest, then `assay map`, then `assay run --mapping reports/mapping/mapping.json`.
 Tests: eligibility and each gap reason, ranking and tie-breaks, threshold boundary and top-k, invalid settings and duplicate IDs, positive and negative examples on the demo data, determinism, mapping accepted by the runner and tags tests, stub disabled with no network, CLI behavior. The tests were checked by deliberately breaking six rules of the mapper and confirming a test fails each time.
@@ -76,11 +76,13 @@ Pass: mapping is identical across runs; uncovered criteria are listed with a rea
 Finding: the first version mapped REQ-010 ("missing product name") to the missing-price and missing-category tests too, because "missing required" dominated the text similarity. A test targeting one field can no longer verify a criterion about another.
 Limitation: the default threshold (0.4) is provisional and was chosen after seeing the demo score table; M5 re-chooses it on labelled data and freezes it.
 
-### M5 — Evaluation harness
-Deliverable: 30–40 hand-labelled pairs in CSV; LABELLING.md; 5–10 switchable demo API mutants; metric code and tests.
-Run: pytest plus evaluation command.
-Tests: metric formulas, empty-set behavior, mutant selection, known mutant kills.
-Pass: label protocol is documented, mutants default off, calculations match hand-worked examples. Fail: inconsistent labels or irreproducible metrics.
+### M5 — Evaluation harness (harness implemented; labelling and threshold freeze pending)
+Deliverable: src/assay/metrics.py (pure formulas), src/assay/evaluation.py and `assay evaluate sample|mapping|mutants`; data/labelled_pairs.csv (40 blank pairs, 20 dev / 20 test, score-blind) with data/labelled_pairs.meta.json; ten switchable demo API mutants (`create_app(mutant=...)`, off by default); docs/LABELLING.md and docs/METRICS.md.
+Run: pytest, then `assay evaluate mutants`; after labelling, `assay evaluate mapping`.
+Tests: metric formulas against hand-worked examples, empty-set behaviour (undefined, not 0 or 1), sampling determinism and strata, label-sheet validation, dev-only threshold sweep, each mutant changes behaviour while the real API does not, stray ASSAY_MUTANT cleared, control run must pass, known mutant kills, byte-identical output, case-ID freeze guard. The tests were checked by deliberately breaking five rules and confirming a test fails each time.
+Pass: label protocol is documented, mutants default off, calculations match hand-worked examples, test IDs frozen. Fail: inconsistent labels or irreproducible metrics.
+Finding: the baseline suite kills 6 of 10 mutants (control 43 of 43 passing). It misses the enum value `toy`, both 404 rules and the `/health` body value, because it asserts status codes only and has no unknown-ID tests. A measurement of the baseline, not a comparison.
+Pending: a person labels the 40 pairs before any mapper output is viewed; then the threshold is chosen on dev by the pre-set rule, scored on test, and replaces the provisional 0.4 in its own commit. Self-agreement (relabel a subset days later, `cohens_kappa`) has the formula but no command yet.
 
 ### M6 — Comparison and docs
 Deliverable: compare baseline vs full pipeline on requirement coverage and mutation score; final README, architecture diagram, measured results and limitations; complete CI.
