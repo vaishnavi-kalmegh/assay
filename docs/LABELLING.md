@@ -59,8 +59,10 @@ These use an invented API, not the demo API, and are not rows in the sheet.
   Do not skip rows. The count of unsure rows is reported as a limitation.
 - Do not edit any other column, add rows or reorder. The evaluation checks IDs
   and refuses a sheet whose rows no longer match.
-- Save as CSV, UTF-8. Test names contain an em dash; spreadsheet programs
-  handle it, but check that it is still there after saving.
+- Save as **CSV UTF-8**. Test names contain an em dash. A byte-order mark, which
+  spreadsheet programs add when saving as "CSV UTF-8", is accepted. Plain "CSV" on
+  Windows writes the dash in a legacy encoding; the commands reject that with a
+  message telling you to save as CSV UTF-8.
 - Expect roughly 30 to 40 minutes.
 
 ## After labelling
@@ -74,12 +76,34 @@ These use an invented API, not the demo API, and are not rows in the sheet.
 3. The chosen threshold then replaces the provisional `0.4`, in its own commit,
    and is frozen.
 
+## Second pass: self-agreement
+
+With one labeller there is no second opinion, so the closest check is you against
+yourself, a few days later. Do this only after the first pass is finished and has
+been saved.
+
+1. `assay evaluate relabel` writes `data/relabelled_pairs.csv`: a blank copy of 20
+   of the 40 pairs (change with `--size`), in a different order. The pairs are
+   chosen by a seeded hash of the pair ID alone, so the choice cannot depend on
+   your first labels, and the labels and notes are cleared. It refuses to
+   overwrite an existing file (`--force`) and never writes over the first sheet.
+2. Wait a few days, then label that sheet without looking at your first labels,
+   following the same rules as above.
+3. `assay evaluate agreement` compares the two passes on the pairs in the second
+   sheet and writes `reports/evaluation/agreement.json` and `agreement.md`:
+   observed agreement, Cohen's kappa, each disagreement, and how many rows you
+   marked `unsure` each time. Look at the disagreements: they show which kinds of
+   pair you find ambiguous.
+
+The first labels stay the ground truth. The second pass measures how stable they
+are; it does not replace them.
+
 ## What the labels can and cannot show
 
 - **One labeller.** There is no second opinion. A single person's reading of
-  "verifies" is what the numbers measure. Self-agreement (relabelling a subset
-  days later and computing Cohen's kappa, `metrics.cohens_kappa`) is planned but
-  not done yet; until it is, label noise is unknown.
+  "verifies" is what the numbers measure. Until you have done the second pass
+  above, label noise is unknown, and even after it the result is one person's
+  consistency with themselves, not agreement between people.
 - **Stratified, not random.** The sample is drawn from three groups:
   pairs the mapper's rules allowed (20), pairs on the same endpoint the rules
   ruled out (12), and pairs on other endpoints (8). It over-represents the
@@ -92,3 +116,11 @@ These use an invented API, not the demo API, and are not rows in the sheet.
   if the IDs change. If the generator changes, version the change and relabel.
 - **Regenerating the sheet.** `assay evaluate sample` refuses to overwrite an
   existing sheet. Do not use `--force` after you have started labelling.
+- **The sheet is frozen once drawn.** The sampler's groups depend on the mapper's
+  eligibility rules, so a fresh draw after a mapper change picks somewhat
+  different pairs (after the M5 mapper fixes, 6 of the 40 pairs would be replaced
+  by others, and 1 pair that stays would land in the other half). The committed
+  sheet is never redrawn to follow the mapper; its labels belong to these exact
+  pairs. `tests/test_evaluation.py` pins every pair with its dev/test assignment
+  and compares every non-label column with the current criteria and tests, so
+  moving a pair between halves or editing a data column fails a test.
