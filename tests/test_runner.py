@@ -453,7 +453,7 @@ def test_external_base_url_accepts_absolute_http_urls(url: str) -> None:
 )
 def test_external_base_url_rejects_invalid_or_embedded_credentials(url: str) -> None:
     with pytest.raises(ValueError, match="--base-url"):
-        _validate_base_url(url)
+        runner._validate_base_url(url)
 
 
 def test_exported_client_fixture_supports_external_http_target(tmp_path: Path) -> None:
