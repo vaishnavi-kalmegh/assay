@@ -339,6 +339,14 @@ def f1(precision: float | None, recall: float | None) -> float | None:
     return 2 * precision * recall / (precision + recall)
 
 
+# A dev half with fewer positives than this cannot rank thresholds: with one
+# positive, every threshold that finds it ties at F1 1.0 and the "higher threshold
+# wins ties" rule then picks the top of the range, which fits nothing. Five is a
+# floor below which the sweep is declared uninformative, not a sign that five is
+# enough to trust it.
+MIN_DEV_POSITIVES = 5
+
+
 def choose_threshold(sweep: Sequence[dict[str, Any]]) -> float | None:
     """The rule fixed in advance: highest dev F1; on a tie, the higher threshold.
 
@@ -395,7 +403,9 @@ def evaluate_mapping(
                 "f1": f1(quality["precision"], quality["recall"]),
             }
         )
-    chosen = choose_threshold(sweep)
+    dev_positives = sum(labels_by_split["dev"].values())
+    tuned = dev_positives >= MIN_DEV_POSITIVES
+    chosen = choose_threshold(sweep) if tuned else None
 
     reference = map_requirements(criteria, tests, threshold=threshold, top_k=top_k)
     strata = classify_pairs(criteria, tests, reference)
@@ -418,6 +428,12 @@ def evaluate_mapping(
             name: score(labels_by_split[name], threshold) for name in SPLITS
         },
         "dev_sweep": sweep,
+        "threshold_tuning": {
+            "tuned": tuned,
+            "dev_positives": dev_positives,
+            "minimum_dev_positives": MIN_DEV_POSITIVES,
+            "kept_threshold": threshold if not tuned else chosen,
+        },
         "dev_chosen_threshold": chosen,
     }
     if chosen is not None:
@@ -683,7 +699,18 @@ def mapping_markdown(report: dict[str, Any]) -> str:
             f"{_fmt(entry['recall'])} | {_fmt(entry['f1'])} |"
         )
     chosen = report["dev_chosen_threshold"]
-    lines += ["", f"Dev-chosen threshold: {chosen if chosen is not None else 'none'}"]
+    tuning = report["threshold_tuning"]
+    if tuning["tuned"]:
+        lines += ["", f"Dev-chosen threshold: {chosen}"]
+    else:
+        lines += [
+            "",
+            f"Threshold not tuned: the dev half has {tuning['dev_positives']} "
+            f"positive(s), fewer than the {tuning['minimum_dev_positives']} needed "
+            "for the sweep to rank thresholds. The configured threshold "
+            f"{tuning['kept_threshold']} is kept. It is a default, not a measured "
+            "optimum.",
+        ]
     if chosen is not None:
         lines += ["", "| split | precision | recall |", "|---|---|---|"]
         for name in SPLITS:
