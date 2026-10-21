@@ -73,8 +73,12 @@ These use an invented API, not the demo API, and are not rows in the sheet.
 2. The threshold rule was fixed before any label existed: highest F1 on the dev
    half, and on a tie the higher threshold. It is not adjusted after seeing the
    test half.
-3. The chosen threshold then replaces the provisional `0.4`, in its own commit,
-   and is frozen.
+   One amendment was made after labelling: the sweep only runs when the dev half
+   has at least 5 positives (see `docs/METRICS.md`). The committed sheet has 1 dev
+   positive, so no threshold is chosen from it.
+3. Because nothing was tuned, `0.4` stays the configured default and is frozen as
+   such: a default, not a value measured to be best. It changes only if a larger
+   labelled sheet gives the dev half enough positives for the sweep to run.
 
 ## Second pass: self-agreement
 

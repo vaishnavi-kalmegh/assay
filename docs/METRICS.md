@@ -44,7 +44,18 @@ group so both halves see every group. The threshold sweep (0.00 to 1.00 in
 steps of 0.05) uses **dev pairs only**. The rule, fixed before any label existed:
 highest F1 on dev; on a tie, the higher threshold; thresholds with undefined F1
 are skipped. The chosen threshold is then scored on the **test** half, which it
-never influenced. The report also shows the configured threshold on both halves
+never influenced.
+
+**Amendment (made after the labels existed).** The sweep is only run when the dev
+half has at least `MIN_DEV_POSITIVES` (5) positive pairs. The committed sheet has 5
+positives in total and only 1 in the dev half, so every threshold that finds that
+one pair ties at F1 1.0 and the tie rule picked 1.0, which on the test half gives
+recall 0. That is not a measured optimum. The guard was added after seeing this, so
+it is a disclosed change to a rule that was fixed in advance. It only withholds a
+choice: it was not tuned on the test half and picks no number. With too few dev
+positives the report says "Threshold not tuned" and the configured threshold is
+kept. Five is a floor below which the sweep is uninformative, not evidence that
+five positives are enough. The report also shows the configured threshold on both halves
 for comparison.
 
 Limits: 40 pairs (20 per half) is small, the sample is stratified rather than
