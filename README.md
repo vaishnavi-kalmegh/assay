@@ -23,7 +23,8 @@ Requires Python 3.11 or newer.
     ruff check .
     python scripts/export_openapi.py
     assay run  # export, run and report the generated baseline tests
-    assay map  # map criteria.yaml to those tests and report the gaps
+    assay acceptance  # generate and run directly asserted tests from criteria.yaml
+    assay map  # map criteria.yaml to baseline tests and report the gaps
     assay evaluate mutants  # run the tests against 10 hand-written API mutants
 
-The OpenAPI export is sorted and deterministic. CI runs on Ubuntu 24.04. The schema-only baseline uses only the OpenAPI document and never reads criteria.yaml. It generates normalized valid, boundary, invalid-type, missing-required, and invalid-enum cases; unsupported schema constructs fail with UnsupportedSchemaError.
+The OpenAPI export is sorted and deterministic. CI runs on Ubuntu 24.04. The schema-only baseline uses only the OpenAPI document and never reads criteria.yaml. It generates normalized valid, boundary, invalid-type, missing-required, and invalid-enum cases; unsupported schema constructs fail with UnsupportedSchemaError. The separate `assay acceptance` command turns the supported structured criteria into one executable pytest test per requirement, including response-body assertions and unknown-resource checks. It writes generated files to `generated_acceptance/` and a deterministic result report to `reports/acceptance-results.json`.
