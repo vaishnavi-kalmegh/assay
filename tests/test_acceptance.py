@@ -31,7 +31,7 @@ def test_export_creates_one_explicit_test_for_each_requirement(tmp_path: Path) -
         f"REQ-{number:03d}" for number in range(1, 19)
     ]
     assert source.count("@pytest.mark.req(") == 18
-    assert 'assert response.json()["status"] == "ok"' in source
+    assert "assert response.json()['status'] == 'ok'" in source
     assert 'assert response.json()["id"] == product_id' in source
     assert "assert response.status_code == 404" in source
     assert (output / "manifest.json").exists()
