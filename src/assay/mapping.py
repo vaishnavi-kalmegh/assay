@@ -102,6 +102,10 @@ class TraceMatch(BaseModel):
     name: str
     score: float
     rank: int
+    # "tfidf": the score is text similarity. "explicit_status": the criterion is
+    # `response.status equals N` and the test asserts that exact status, which is
+    # direct evidence, so the score is 1.0 by rule rather than by word overlap.
+    basis: Literal["tfidf", "explicit_status"] = "tfidf"
 
 
 class TraceRow(BaseModel):
@@ -206,6 +210,86 @@ def _field_words(field: str) -> list[str]:
     return [word for word in tokenize(field) if word not in _LOCATION_WORDS]
 
 
+def _is_whole_request(field: str) -> bool:
+    """True for a test that exercises the whole request, such as a valid request.
+
+    Such a test sends every field with a valid value, so it can stand in for a
+    criterion about any one field. A test about "body" alone (for example a
+    missing JSON body) or "path" alone names no field and is not whole-request.
+    """
+    return not _field_words(field) and "request" in tokenize(field)
+
+
+def _field_compatible(criterion_field: str, test_field: str) -> bool:
+    """Can a test with this field verify a criterion about that field?
+
+    - A criterion about a response status has no request field to match.
+    - A criterion with no field words matches any test.
+    - Otherwise the test must name the same field, or be a whole-request test.
+    A body-only or path-only test names no field and never qualifies.
+    """
+    if _is_status_criterion_field(criterion_field):
+        return True
+    wanted = frozenset(_field_words(criterion_field))
+    if not wanted:
+        return True
+    have = frozenset(_field_words(test_field))
+    if have:
+        return have == wanted
+    return _is_whole_request(test_field)
+
+
+def _is_status_criterion_field(field: str) -> bool:
+    return field.strip().lower() == "response.status"
+
+
+# A bound's direction. "Opposing" directions can never verify one another: a test
+# about a maximum says nothing about whether the minimum is enforced.
+_LOWER_BOUNDS = frozenset({"min_length", "greater_than", "greater_than_or_equal"})
+_UPPER_BOUNDS = frozenset({"max_length", "less_than", "less_than_or_equal"})
+_BOUND_WORD = re.compile(r"\b(minimum|maximum)\b")
+
+
+def _criterion_bound(constraint: str) -> str | None:
+    if constraint in _LOWER_BOUNDS:
+        return "lower"
+    if constraint in _UPPER_BOUNDS:
+        return "upper"
+    return None
+
+
+def _test_bound(test: MappableTest) -> str | None:
+    """The bound direction a test exercises, read from its generated name.
+
+    Names look like "POST /products — body.name — just below minimum length 3".
+    Only the last part (what the case does) is read. A name that mentions both
+    directions, or neither, has no single direction and is not filtered.
+    """
+    tail = test.name.split(" — ")[-1].lower()
+    words = set(_BOUND_WORD.findall(tail))
+    if words == {"minimum"}:
+        return "lower"
+    if words == {"maximum"}:
+        return "upper"
+    return None
+
+
+def _constraint_compatible(criterion: Criterion, test: MappableTest) -> bool:
+    wanted = _criterion_bound(criterion.constraint)
+    have = _test_bound(test)
+    return wanted is None or have is None or wanted == have
+
+
+def _asserts_status(criterion: Criterion, test: MappableTest) -> bool:
+    """`response.status equals N`, and the test asserts that status N."""
+    return (
+        _is_status_criterion_field(criterion.field)
+        and criterion.constraint == "equals"
+        and "status" in test.checks
+        and str(criterion.value) == str(test.expected_status)
+    )
+
+
 def _flatten(value: Any) -> str:
     if isinstance(value, bool) or value is None:
         return ""
@@ -292,69 +376,6 @@ def baseline_tests_from_spec(spec: dict[str, Any]) -> list[MappableTest]:
 # --- mapping -----------------------------------------------------------------
 
 
-def _constraint_compatible(criterion: Criterion, test: MappableTest) -> bool:
-    """Reject tests whose boundary direction does not exercise the criterion.
-
-    Operation, status, and field are checked separately. For recognized schema
-    constraints, the generated case kind/name must also match the relevant
-    boundary and outcome. Unknown constraints retain the previous text-ranking
-    behavior rather than being guessed.
-    """
-    constraint = criterion.constraint
-    success = 200 <= criterion.expected_status < 300
-    value_tokens = tokenize(_flatten(criterion.value))
-    value = value_tokens[0] if value_tokens else ""
-
-    if constraint == "min_length":
-        phrase = (
-            f"minimum length {value}"
-            if success
-            else f"just below minimum length {value}"
-        )
-        return phrase in test.name.lower()
-    if constraint == "max_length":
-        phrase = (
-            f"maximum length {value}"
-            if success
-            else f"just above maximum length {value}"
-        )
-        return phrase in test.name.lower()
-    if constraint == "greater_than":
-        phrase = (
-            f"just inside exclusive minimum {value}"
-            if success else f"just outside exclusive minimum {value}"
-        )
-        return phrase in test.name.lower()
-    if constraint == "greater_than_or_equal":
-        phrase = (
-            f"minimum boundary {value}"
-            if success
-            else f"just outside minimum {value}"
-        )
-        return phrase in test.name.lower()
-    if constraint == "less_than_or_equal":
-        phrase = (
-            f"maximum boundary {value}"
-            if success
-            else f"just outside maximum {value}"
-        )
-        return phrase in test.name.lower()
-    if constraint == "enum":
-        if success:
-            return test.kind == "valid" and test.expected_valid
-        return test.kind == "invalid_enum" and "invalid enum value" in test.name.lower()
-    if constraint == "required":
-        if success:
-            return test.kind == "valid" and test.expected_valid
-        return (
-            test.kind == "missing_required"
-            and "missing required field" in test.name.lower()
-        )
-    if constraint == "not_found":
-        return "not found" in test.name.lower() and test.expected_status == 404
-    return True
-
-
 def _gap_row(
     criterion: Criterion, reason: GapReason, detail: str, eligible: int = 0
 ) -> TraceRow:
@@ -430,14 +451,11 @@ def map_requirements(
                 + "/".join(sorted({c for t in same_status for c in t.checks})),
             ))
             continue
-        wanted = frozenset(_field_words(criterion.field))
-        eligible = [
+        field_ready = [
             test for test in body_ready
-            if not wanted
-            or not _field_words(test.field)
-            or frozenset(_field_words(test.field)) == wanted
+            if _field_compatible(criterion.field, test.field)
         ]
-        if not eligible:
+        if not field_ready:
             targeted = sorted({test.field for test in body_ready})
             rows.append(_gap_row(
                 criterion, "no_test_for_field",
@@ -445,30 +463,34 @@ def map_requirements(
                 + ", ".join(targeted),
             ))
             continue
-        constraint_eligible = [
-            test for test in eligible if _constraint_compatible(criterion, test)
+        eligible = [
+            test for test in field_ready if _constraint_compatible(criterion, test)
         ]
-        if not constraint_eligible:
+        if not eligible:
             rows.append(_gap_row(
-                criterion,
-                "no_test_for_constraint",
-                f"eligible tests do not exercise constraint {criterion.constraint} "
-                f"with value {criterion.value!r} and expected status "
-                f"{criterion.expected_status}",
-                eligible=len(eligible),
+                criterion, "no_test_for_constraint",
+                f"tests for {criterion.field} exercise the opposite bound of "
+                f"{criterion.constraint}: "
+                + ", ".join(sorted({test.name for test in field_ready})),
             ))
             continue
-        eligible = constraint_eligible
-        ranked = sorted(
-            (
-                (round(float(scores[row_index, position[test.case_id]]), 4), test)
-                for test in eligible
-            ),
-            key=lambda pair: (-pair[0], pair[1].case_id),
-        )
+        scored = []
+        for test in eligible:
+            explicit = _asserts_status(criterion, test)
+            similarity = 1.0 if explicit else round(
+                float(scores[row_index, position[test.case_id]]), 4
+            )
+            scored.append((similarity, explicit, test))
+        ranked = sorted(scored, key=lambda item: (-item[0], item[2].case_id))
         candidates = [
-            TraceMatch(case_id=test.case_id, name=test.name, score=score, rank=rank)
-            for rank, (score, test) in enumerate(ranked, start=1)
+            TraceMatch(
+                case_id=test.case_id,
+                name=test.name,
+                score=score,
+                rank=rank,
+                basis="explicit_status" if explicit else "tfidf",
+            )
+            for rank, (score, explicit, test) in enumerate(ranked, start=1)
         ]
         matches = [match for match in candidates if match.score >= threshold][:top_k]
         row = TraceRow(
@@ -568,6 +590,13 @@ def get_mapper(
 # --- reports -----------------------------------------------------------------
 
 
+def _score_label(match: TraceMatch) -> str:
+    """The score as shown in report.md; a rule-based match names its basis."""
+    if match.basis == "tfidf":
+        return f"{match.score:.4f}"
+    return f"{match.score:.4f}, {match.basis}"
+
+
 def _markdown(result: MappingResult) -> str:
     lines = [
         "# Traceability and gap report",
@@ -582,13 +611,18 @@ def _markdown(result: MappingResult) -> str:
         "",
         "## Traceability",
         "",
+        "Scores are TF-IDF text similarity. A match marked `explicit_status` is "
+        "instead a rule: the criterion is `response.status equals N` and the test "
+        "asserts that status, so it scores 1.0 regardless of wording. It is the "
+        "`basis` field of the same match in `traceability.json`.",
+        "",
         "| Requirement | Mapped tests (score) |",
         "| --- | --- |",
     ]
     for row in result.rows:
         if row.matches:
             cell = "<br>".join(
-                f"{m.case_id} ({m.score:.4f}) {m.name}" for m in row.matches
+                f"{m.case_id} ({_score_label(m)}) {m.name}" for m in row.matches
             )
         else:
             cell = "—"

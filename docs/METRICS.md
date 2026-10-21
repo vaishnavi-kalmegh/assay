@@ -50,6 +50,27 @@ for comparison.
 Limits: 40 pairs (20 per half) is small, the sample is stratified rather than
 random, and there is one labeller. See `docs/LABELLING.md`.
 
+### Self-agreement
+
+To estimate label noise, the same person labels a subset of the pairs a second time
+after a few days, without looking at the first labels (`assay evaluate relabel`,
+then `assay evaluate agreement`). The report gives:
+
+- **observed agreement** = pairs labelled the same both times / pairs compared;
+- **Cohen's kappa** = (observed - chance) / (1 - chance), where chance is the
+  agreement expected from how often each pass said yes (`metrics.cohens_kappa`).
+  It is undefined when chance agreement is already 1, for example when every label
+  is the same;
+- the disagreements, and how many rows were marked `unsure` in each pass.
+
+Worked example (also a test): 10 pairs, five yes each time, one yes flipped to no
+and one no flipped to yes. Observed agreement 8/10, chance 0.5, kappa 0.6.
+
+What it does not show: with 20 pairs one changed label moves observed agreement by
+5 points, kappa is unstable when most labels are the same, and this is one person's
+consistency with themselves, not agreement between people. No threshold for "good
+enough" is applied.
+
 ## Requirement coverage
 
 **coverage = criteria with at least one passing test tagged with the criterion /
@@ -142,6 +163,8 @@ today's tests.
 ```
 assay evaluate sample              # write the blank sheet (refuses to overwrite)
 assay evaluate mapping             # score the mapper on a filled-in sheet
+assay evaluate relabel             # blank subset of the pairs, to label again later
+assay evaluate agreement           # compare the two passes (agreement, kappa)
 assay evaluate mutants             # control run, then every mutant
 assay evaluate mutants --mutant price_allows_zero   # a chosen subset
 ```
