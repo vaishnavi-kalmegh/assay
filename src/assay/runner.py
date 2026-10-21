@@ -465,6 +465,10 @@ def _validate_base_url(base_url: str) -> None:
         raise ValueError("--base-url must be an absolute http:// or https:// URL")
     if parsed.username or parsed.password:
         raise ValueError("--base-url must not contain credentials; configure auth separately")
+    if parsed.path not in {"", "/"} or parsed.query or parsed.fragment:
+        raise ValueError(
+            "--base-url must be the API origin only (no path, query, or fragment)"
+        )
 
 
 def run(
