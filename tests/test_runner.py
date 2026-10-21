@@ -10,6 +10,7 @@ import pytest
 
 from assay.baseline import generate_cases
 from assay.runner import (
+    _validate_base_url,
     ManifestEntry,
     expected_status,
     export_tests,
@@ -17,7 +18,6 @@ from assay.runner import (
     main,
     run,
     run_tests,
-    _validate_base_url,
 )
 
 ROOT = Path(__file__).resolve().parents[1]
