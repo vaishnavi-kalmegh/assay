@@ -226,7 +226,9 @@ def test_a_whole_request_test_is_eligible_for_any_field() -> None:
 
 
 def test_low_scoring_eligible_tests_are_reported_as_below_threshold() -> None:
-    weak = case(\n        name="POST /items — body.name — just below minimum length 3 unrelated words"\n    )
+    weak = case(
+        name="POST /items — body.name — just below minimum length 3 unrelated words"
+    )
 
     row = map_requirements([criterion()], [weak], threshold=0.99).rows[0]
 
