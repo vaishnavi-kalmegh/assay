@@ -97,9 +97,20 @@ def classify_pairs(
     same_operation  - same method and path, but the rules ruled the test out
     other_operation - a different endpoint
     """
+    # Keep the evaluation sample independent of constraint-aware filtering.
+    # Human labels need both plausible and misleading same-operation pairs;
+    # otherwise the new filter silently removes the very false matches we want
+    # the evaluation set to measure. "unspecified" preserves structural gates.
+    structural_criteria = [
+        criterion.model_copy(update={"constraint": "unspecified"})
+        for criterion in criteria
+    ]
+    structural_result = map_requirements(
+        structural_criteria, tests, threshold=0.0
+    )
     candidates = {
         (row.requirement_id, match.case_id)
-        for row in result.rows
+        for row in structural_result.rows
         for match in row.candidates
     }
     strata: dict[tuple[str, str], str] = {}
