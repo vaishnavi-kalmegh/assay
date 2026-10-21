@@ -1,10 +1,12 @@
 """Evaluation harness: labelled-pair sampling, mapping evaluation, mutant runs.
 
-Three jobs, kept separate because they answer different questions:
+Jobs, kept separate because they answer different questions:
 
-* ``sample``  - draw pairs for a human to label, blind to the mapper's scores.
-* ``mapping`` - score the mapper against the human labels (precision / recall).
-* ``mutants`` - run the generated suite against switchable demo API mutants.
+* ``sample``    - draw pairs for a human to label, blind to the mapper's scores.
+* ``mapping``   - score the mapper against the human labels (precision / recall).
+* ``relabel``   - write a blank sheet of a subset of the pairs, to label again later.
+* ``agreement`` - compare the two labellings (self-agreement, Cohen's kappa).
+* ``mutants``   - run the generated suite against switchable demo API mutants.
 
 Nothing here calls a network service or a language model.
 """
@@ -34,6 +36,7 @@ from assay.mapping import (
 from assay.runner import export_tests, load_spec, run_tests
 
 DEFAULT_SEED = 1
+DEFAULT_RELABEL_SIZE = 20
 # How many pairs to draw from each stratum. Strata use only structural facts (does
 # the pair share an operation, did it pass the mapper's eligibility rules) and
 # never the similarity score, so the sample is blind to the thing being measured.
@@ -235,6 +238,31 @@ def write_label_sheet(
 # --- reading labels -----------------------------------------------------------
 
 
+def _read_sheet(path: Path) -> list[dict[str, str]]:
+    """Read a label sheet's rows.
+
+    A UTF-8 byte-order mark is accepted (spreadsheet programs add one when saving
+    as "CSV UTF-8"). Any other encoding is rejected with a message that says what
+    to do, instead of a raw decoding error.
+    """
+    try:
+        with Path(path).open(encoding="utf-8-sig", newline="") as handle:
+            reader = csv.DictReader(handle)
+            missing = [
+                name for name in LABEL_COLUMNS if name not in (reader.fieldnames or [])
+            ]
+            if missing:
+                raise EvaluationError(f"{path} is missing columns: {missing}")
+            return list(reader)
+    except UnicodeDecodeError as error:
+        raise EvaluationError(
+            f"{path} is not valid UTF-8 ({error.reason} at byte {error.start}); "
+            "save it as 'CSV UTF-8' so the dashes in test names survive"
+        ) from error
+    except OSError as error:
+        raise EvaluationError(f"cannot read {path}: {error}") from error
+
+
 def load_labels(
     path: Path,
     criteria: Sequence[Criterion],
@@ -242,17 +270,7 @@ def load_labels(
     meta_path: Path | None = None,
 ) -> list[dict[str, str]]:
     """Read and validate a filled-in label sheet. Every problem is an error."""
-    try:
-        with Path(path).open(encoding="utf-8", newline="") as handle:
-            reader = csv.DictReader(handle)
-            missing = [
-                name for name in LABEL_COLUMNS if name not in (reader.fieldnames or [])
-            ]
-            if missing:
-                raise EvaluationError(f"{path} is missing columns: {missing}")
-            rows = list(reader)
-    except OSError as error:
-        raise EvaluationError(f"cannot read {path}: {error}") from error
+    rows = _read_sheet(path)
     if not rows:
         raise EvaluationError(f"{path} contains no labelled pairs")
     if meta_path is not None and Path(meta_path).exists():
@@ -407,6 +425,137 @@ def evaluate_mapping(
             name: score(labels_by_split[name], chosen) for name in SPLITS
         }
     return report
+
+
+# --- self-agreement -----------------------------------------------------------
+
+
+def _write_rows(rows: Sequence[dict[str, str]], path: Path) -> None:
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("w", encoding="utf-8", newline="") as handle:
+        writer = csv.DictWriter(handle, fieldnames=LABEL_COLUMNS, lineterminator="\n")
+        writer.writeheader()
+        writer.writerows(rows)
+
+
+def make_relabel_rows(
+    first_rows: Sequence[dict[str, str]],
+    *,
+    size: int = DEFAULT_RELABEL_SIZE,
+    seed: int = DEFAULT_SEED,
+) -> list[dict[str, str]]:
+    """A blank copy of a seeded subset of the first sheet, in a different order.
+
+    The subset is chosen by a seeded hash of the pair ID alone, so it cannot depend
+    on the first labels, and the labels and notes are cleared so the second pass is
+    made without consulting the first.
+    """
+    ids = [row["pair_id"] for row in first_rows]
+    if len(set(ids)) != len(ids):
+        raise EvaluationError("the first sheet contains duplicate pairs")
+    if not 1 <= size <= len(ids):
+        raise EvaluationError(f"size must be between 1 and {len(ids)}, got {size}")
+    by_id = {row["pair_id"]: row for row in first_rows}
+    chosen = sorted(ids, key=lambda pair: _stable_key(seed, "relabel:" + pair))[:size]
+    chosen.sort(key=lambda pair: _stable_key(seed, "relabel-order:" + pair))
+    rows = []
+    for pair_id in chosen:
+        row = {name: by_id[pair_id][name] for name in LABEL_COLUMNS}
+        row["label"] = ""
+        row["notes"] = ""
+        rows.append(row)
+    return rows
+
+
+def _is_unsure(row: dict[str, str]) -> bool:
+    return "unsure" in row.get("notes", "").lower()
+
+
+def evaluate_agreement(
+    first_rows: Sequence[dict[str, str]], second_rows: Sequence[dict[str, str]]
+) -> dict[str, Any]:
+    """Self-agreement between two labellings of the same pairs by one person.
+
+    Every pair in the second sheet must be in the first. Only those pairs are
+    compared. This measures how consistent one labeller is with themselves, not
+    agreement between people.
+    """
+    first = {(r["requirement_id"], r["case_id"]): r for r in first_rows}
+    second = {(r["requirement_id"], r["case_id"]): r for r in second_rows}
+    unknown = sorted(_pair_id(*pair) for pair in second if pair not in first)
+    if unknown:
+        raise EvaluationError(
+            f"pairs in the relabel sheet are not in the first sheet: {unknown}"
+        )
+    pairs = sorted(second)
+    if not pairs:
+        raise EvaluationError("the relabel sheet has no pairs to compare")
+    first_labels = {pair: first[pair]["label"] == "1" for pair in pairs}
+    second_labels = {pair: second[pair]["label"] == "1" for pair in pairs}
+    disagreements = [
+        {
+            "pair_id": _pair_id(*pair),
+            "split": first[pair]["split"],
+            "first_label": int(first_labels[pair]),
+            "second_label": int(second_labels[pair]),
+        }
+        for pair in pairs
+        if first_labels[pair] != second_labels[pair]
+    ]
+    agreed = len(pairs) - len(disagreements)
+    return {
+        "first_sheet_pairs": len(first),
+        "pairs_compared": len(pairs),
+        "agreements": agreed,
+        "disagreements": disagreements,
+        "observed_agreement": metrics.ratio(agreed, len(pairs)),
+        "cohens_kappa": metrics.cohens_kappa(first_labels, second_labels),
+        "positives_first": sum(first_labels.values()),
+        "positives_second": sum(second_labels.values()),
+        "unsure_first": sum(_is_unsure(first[pair]) for pair in pairs),
+        "unsure_second": sum(_is_unsure(second[pair]) for pair in pairs),
+    }
+
+
+def agreement_markdown(report: dict[str, Any]) -> str:
+    """A short human-readable summary of ``evaluate_agreement`` output."""
+    n = report["pairs_compared"]
+    kappa = report["cohens_kappa"]
+    lines = [
+        "# Self-agreement",
+        "",
+        f"Pairs compared: {n} of {report['first_sheet_pairs']} in the first sheet.",
+        f"Agreed on {report['agreements']} of {n} "
+        f"(observed agreement {_fmt(report['observed_agreement'])}).",
+        f"Cohen's kappa: {_fmt(kappa)}"
+        + (
+            " (undefined: chance agreement is already 1, or there is nothing to "
+            "compare)"
+            if kappa is None
+            else ""
+        ),
+        f"Positive labels: {report['positives_first']} first pass, "
+        f"{report['positives_second']} second pass. Rows marked unsure: "
+        f"{report['unsure_first']} first pass, {report['unsure_second']} second pass.",
+        "",
+        "This is one person's consistency with themselves, not agreement between "
+        f"people. With {n} pairs, one changed label moves observed agreement by "
+        f"{100 / n:.1f} points, and kappa is unstable when most labels are the same.",
+        "",
+        "## Disagreements",
+        "",
+    ]
+    if not report["disagreements"]:
+        lines.append("None.")
+    else:
+        lines += ["| pair | split | first | second |", "|---|---|---|---|"]
+        for item in report["disagreements"]:
+            lines.append(
+                f"| {item['pair_id']} | {item['split']} | {item['first_label']} | "
+                f"{item['second_label']} |"
+            )
+    return "\n".join(lines) + "\n"
 
 
 # --- mutants ------------------------------------------------------------------
@@ -572,7 +721,7 @@ def mutation_markdown(result: dict[str, Any]) -> str:
 
 
 def register_commands(commands: Any) -> None:
-    """Add `assay evaluate sample|mapping|mutants`."""
+    """Add `assay evaluate sample|mapping|relabel|agreement|mutants`."""
     evaluate = commands.add_parser(
         "evaluate", help="measure mapping quality and mutants"
     )
@@ -605,6 +754,41 @@ def register_commands(commands: Any) -> None:
             part.add_argument("--mutant", action="append", dest="mutants", default=None)
             part.add_argument("--mapping", type=Path, default=None)
 
+    relabel = parts.add_parser(
+        "relabel", help="write a blank sheet of a subset of the pairs to label again"
+    )
+    relabel.add_argument(
+        "--labels",
+        type=Path,
+        default=Path("data/labelled_pairs.csv"),
+        help="first sheet",
+    )
+    relabel.add_argument(
+        "--output", type=Path, default=Path("data/relabelled_pairs.csv")
+    )
+    relabel.add_argument("--size", type=int, default=DEFAULT_RELABEL_SIZE)
+    relabel.add_argument("--seed", type=int, default=DEFAULT_SEED)
+    relabel.add_argument("--force", action="store_true", help="overwrite the output")
+
+    agreement = parts.add_parser(
+        "agreement", help="compare the first and second labelling of the same pairs"
+    )
+    agreement.add_argument("--spec", type=Path, default=Path("specs/openapi.json"))
+    agreement.add_argument("--criteria", type=Path, default=Path("criteria.yaml"))
+    agreement.add_argument(
+        "--labels",
+        type=Path,
+        default=Path("data/labelled_pairs.csv"),
+        help="first sheet",
+    )
+    agreement.add_argument(
+        "--relabels", type=Path, default=Path("data/relabelled_pairs.csv")
+    )
+    agreement.add_argument(
+        "--meta", type=Path, default=Path("data/labelled_pairs.meta.json")
+    )
+    agreement.add_argument("--output", type=Path, default=Path("reports/evaluation"))
+
 
 def handle(arguments: argparse.Namespace) -> int:
     """Run an `assay evaluate` subcommand: 0 success, 2 error."""
@@ -625,8 +809,42 @@ def handle(arguments: argparse.Namespace) -> int:
             print(f"Survived: {', '.join(score['survived']) or 'none'}")
             print(f"Reports written to {arguments.output}")
             return 0
+        if arguments.evaluation == "relabel":
+            if Path(arguments.output).resolve() == Path(arguments.labels).resolve():
+                raise EvaluationError("--output must not be the first sheet")
+            if arguments.output.exists() and not arguments.force:
+                raise EvaluationError(
+                    f"{arguments.output} already exists; refusing to overwrite it "
+                    "(use --force to replace it)"
+                )
+            rows = make_relabel_rows(
+                _read_sheet(arguments.labels), size=arguments.size, seed=arguments.seed
+            )
+            _write_rows(rows, arguments.output)
+            print(f"Wrote {len(rows)} blank pairs to label again in {arguments.output}")
+            print("Label them without looking at your first labels.")
+            return 0
         criteria = load_criteria(arguments.criteria)
         tests = baseline_tests_from_spec(load_spec(arguments.spec))
+        if arguments.evaluation == "agreement":
+            first_rows = load_labels(arguments.labels, criteria, tests, arguments.meta)
+            second_rows = load_labels(
+                arguments.relabels, criteria, tests, arguments.meta
+            )
+            report = evaluate_agreement(first_rows, second_rows)
+            arguments.output.mkdir(parents=True, exist_ok=True)
+            (arguments.output / "agreement.json").write_text(
+                json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+            )
+            (arguments.output / "agreement.md").write_text(
+                agreement_markdown(report), encoding="utf-8"
+            )
+            print(
+                f"Agreed on {report['agreements']} of {report['pairs_compared']} "
+                f"pairs; kappa {_fmt(report['cohens_kappa'])}"
+            )
+            print(f"Reports written to {arguments.output}")
+            return 0
         if arguments.evaluation == "sample":
             if arguments.labels.exists() and not arguments.force:
                 raise EvaluationError(

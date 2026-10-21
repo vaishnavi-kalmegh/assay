@@ -27,6 +27,54 @@ FROZEN_CASE_ID_FINGERPRINT = (
     "6b044adc502881259b729313410abd702b43603890fad93ed891afdabf879422"
 )
 
+# The labelled sheet's pairs, in sheet order, with their dev/test assignment. Moving
+# a pair between halves, adding, removing or reordering pairs fails the integrity
+# test. Pinning this is deliberate: the split is what keeps the threshold choice
+# (dev) apart from the honest estimate (test). It is a frozen record of the sheet
+# as drawn, so it does not follow later changes to the mapper or the sampler.
+FROZEN_PAIR_SPLITS = [
+    ("REQ-017|BASE-63501DB1C1E5", "test"),
+    ("REQ-007|BASE-24F2A691793C", "test"),
+    ("REQ-001|BASE-ACCE3364DDBF", "dev"),
+    ("REQ-008|BASE-C45605A49051", "test"),
+    ("REQ-008|BASE-BD70624B4DB6", "dev"),
+    ("REQ-010|BASE-25A83939B42E", "dev"),
+    ("REQ-003|BASE-BABD40AD7654", "dev"),
+    ("REQ-003|BASE-BD70624B4DB6", "test"),
+    ("REQ-001|BASE-B7511B99FBAF", "dev"),
+    ("REQ-009|BASE-FFE9E6656AED", "test"),
+    ("REQ-015|BASE-C45605A49051", "test"),
+    ("REQ-006|BASE-9FE18F7BA1D4", "test"),
+    ("REQ-006|BASE-C1EB78F90681", "dev"),
+    ("REQ-005|BASE-BD70624B4DB6", "test"),
+    ("REQ-008|BASE-D9059F5116BA", "dev"),
+    ("REQ-007|BASE-EA9F63A8D176", "test"),
+    ("REQ-010|BASE-B7053FFDC7A3", "dev"),
+    ("REQ-009|BASE-F57DEC78BF68", "test"),
+    ("REQ-012|BASE-ADA325A9C3A0", "dev"),
+    ("REQ-005|BASE-E205982C270D", "test"),
+    ("REQ-007|BASE-DC36D6CBBDD1", "dev"),
+    ("REQ-004|BASE-61572B0F8204", "test"),
+    ("REQ-002|BASE-ACCE3364DDBF", "dev"),
+    ("REQ-002|BASE-C5963F15308C", "test"),
+    ("REQ-013|BASE-C45605A49051", "test"),
+    ("REQ-003|BASE-25A83939B42E", "dev"),
+    ("REQ-011|BASE-0AE43E8BB6A2", "test"),
+    ("REQ-005|BASE-24F2A691793C", "dev"),
+    ("REQ-006|BASE-A8E377FB5739", "dev"),
+    ("REQ-004|BASE-AD0DB6BE77C6", "test"),
+    ("REQ-014|BASE-BABD40AD7654", "dev"),
+    ("REQ-006|BASE-C0F225F6EED3", "test"),
+    ("REQ-007|BASE-7E53008D1DAE", "dev"),
+    ("REQ-009|BASE-BD70624B4DB6", "test"),
+    ("REQ-004|BASE-77E133B408A1", "dev"),
+    ("REQ-004|BASE-24F2A691793C", "dev"),
+    ("REQ-013|BASE-69E516887E11", "test"),
+    ("REQ-003|BASE-C5963F15308C", "test"),
+    ("REQ-005|BASE-7D96379F7C04", "dev"),
+    ("REQ-016|BASE-DC36D6CBBDD1", "dev"),
+]
+
 
 @pytest.fixture(scope="module")
 def tests_and_criteria():
@@ -49,21 +97,149 @@ def test_fingerprint_changes_when_an_id_changes(tests_and_criteria):
     assert evaluation.case_id_fingerprint(altered) != FROZEN_CASE_ID_FINGERPRINT
 
 
-def test_committed_sheet_matches_a_fresh_sample(tests_and_criteria):
-    """The committed sheet is reproducible and tied to the current tests.
+def _read_committed_sheet(path=None):
+    """The committed sheet's rows. A BOM, as a spreadsheet may add, is tolerated."""
+    sheet = path or ROOT / "data" / "labelled_pairs.csv"
+    with Path(sheet).open(encoding="utf-8-sig", newline="") as handle:
+        return list(csv.DictReader(handle))
 
-    Labels and notes are the human's; every other column must be unchanged.
+
+def _assert_sheet_intact(rows, tests, criteria):
+    """Check a label sheet against the frozen record and the current data.
+
+    Labels and notes are the human's and are not compared. Every other column must
+    equal what the current criteria and tests say, and the (pair, split) sequence
+    must equal the frozen pins. Nothing here uses the sampler or the mapper, so a
+    mapper improvement cannot break it.
     """
+    criterion_by_id = {item.id: item for item in criteria}
+    test_by_id = {item.case_id: item for item in tests}
+
+    assert [(r["pair_id"], r["split"]) for r in rows] == FROZEN_PAIR_SPLITS
+
+    compared = set()
+    for row in rows:
+        criterion = criterion_by_id[row["requirement_id"]]
+        test = test_by_id[row["case_id"]]
+        expected = {
+            "pair_id": f"{criterion.id}|{test.case_id}",
+            "requirement_id": criterion.id,
+            "criterion_description": criterion.description,
+            "criterion_field": criterion.field,
+            "criterion_constraint": criterion.constraint,
+            "criterion_value": json.dumps(criterion.value, sort_keys=True),
+            "criterion_expected_status": str(criterion.expected_status),
+            "case_id": test.case_id,
+            "test_name": test.name,
+            "test_kind": test.kind,
+            "test_field": test.field,
+            "test_expected_status": str(test.expected_status),
+            "test_checks": "+".join(test.checks),
+        }
+        compared |= set(expected)
+        for column, value in expected.items():
+            assert row[column] == value, (row["pair_id"], column, row[column], value)
+        assert row["label"] in ("", "0", "1"), (row["pair_id"], row["label"])
+    # A column added to the sheet must be compared here or declared human-only.
+    assert compared | {"split", "label", "notes"} == set(evaluation.LABEL_COLUMNS)
+
+
+def test_committed_sheet_is_frozen_and_consistent_with_the_current_data(
+    tests_and_criteria,
+):
+    """The labelled sheet is a frozen record, not something to redraw."""
     tests, criteria = tests_and_criteria
-    fresh = evaluation.sample_pairs(criteria, tests)
-    with (ROOT / "data" / "labelled_pairs.csv").open(encoding="utf-8") as handle:
-        committed = list(csv.DictReader(handle))
-    keep = [c for c in evaluation.LABEL_COLUMNS if c not in ("label", "notes")]
-    assert [{k: r[k] for k in keep} for r in committed] == [
-        {k: r[k] for k in keep} for r in fresh
-    ]
+    committed = _read_committed_sheet()
+
+    assert len(committed) == len(FROZEN_PAIR_SPLITS)
+    assert len(committed) == sum(evaluation.DEFAULT_COUNTS.values())
+    _assert_sheet_intact(committed, tests, criteria)
+
     meta = json.loads((ROOT / "data" / "labelled_pairs.meta.json").read_text())
     assert meta["case_id_fingerprint"] == FROZEN_CASE_ID_FINGERPRINT
+    assert meta["pairs"] == len(committed)
+    counts = {
+        split: sum(1 for _, name in FROZEN_PAIR_SPLITS if name == split)
+        for split in evaluation.SPLITS
+    }
+    assert meta["splits"] == counts
+
+
+def _tampered(edit):
+    rows = [dict(row) for row in _read_committed_sheet()]
+    edit(rows)
+    return rows
+
+
+def _flip_split(rows):
+    rows[0]["split"] = "dev" if rows[0]["split"] == "test" else "test"
+
+
+def _swap_rows(rows):
+    rows[0], rows[1] = rows[1], rows[0]
+
+
+@pytest.mark.parametrize(
+    "edit",
+    [
+        _flip_split,  # moving one pair between dev and test
+        _swap_rows,  # reordering
+        lambda rows: rows.pop(),  # removing a pair
+        lambda rows: rows.append(dict(rows[0])),  # duplicating a pair
+        lambda rows: rows[3].update(label="maybe"),  # a label that is not 1 or 0
+    ],
+    ids=["flip-split", "reorder", "remove", "duplicate", "bad-label"],
+)
+def test_the_sheet_integrity_check_rejects_structural_tampering(
+    tests_and_criteria, edit
+):
+    tests, criteria = tests_and_criteria
+
+    with pytest.raises(AssertionError):
+        _assert_sheet_intact(_tampered(edit), tests, criteria)
+
+
+@pytest.mark.parametrize(
+    "column",
+    [name for name in evaluation.LABEL_COLUMNS if name not in ("label", "notes")],
+)
+def test_changing_any_non_label_column_is_rejected(tests_and_criteria, column):
+    """Appending to a value always changes it, so no edit can be a silent no-op."""
+    tests, criteria = tests_and_criteria
+
+    def edit(rows):
+        rows[3][column] += "!"
+
+    with pytest.raises((AssertionError, KeyError)):
+        _assert_sheet_intact(_tampered(edit), tests, criteria)
+
+
+def test_labels_and_notes_may_change_without_failing_the_integrity_check(
+    tests_and_criteria,
+):
+    tests, criteria = tests_and_criteria
+
+    def fill(rows):
+        for index, row in enumerate(rows):
+            row["label"] = "10"[index % 2]
+            row["notes"] = "unsure" if index % 7 == 0 else ""
+
+    _assert_sheet_intact(_tampered(fill), tests, criteria)
+
+
+def test_the_integrity_check_does_not_depend_on_the_mapper_or_the_sampler(
+    tests_and_criteria, monkeypatch
+):
+    """A mapper that returned nothing, and a sampler that raised, change nothing."""
+    tests, criteria = tests_and_criteria
+
+    def fail(*args, **kwargs):
+        raise AssertionError("integrity check must not call the mapper or sampler")
+
+    monkeypatch.setattr(evaluation, "map_requirements", fail)
+    monkeypatch.setattr(evaluation, "sample_pairs", fail)
+
+    _assert_sheet_intact(_read_committed_sheet(), tests, criteria)
 
 
 # --- sampling ------------------------------------------------------------------
@@ -532,3 +708,341 @@ def test_only_failed_tests_kill_a_mutant_not_setup_errors():
     ]
     assert evaluation.detecting_cases(rows) == ["A", "B"]
     assert evaluation.detecting_cases([{"case_id": "C", "outcome": "error"}]) == []
+
+
+# --- labelling workflow: encodings ---------------------------------------------
+
+
+def test_a_sheet_saved_with_a_byte_order_mark_loads(tmp_path, tests_and_criteria):
+    tests, criteria = tests_and_criteria
+    sheet, meta, rows = _filled_sheet(tmp_path, tests, criteria, lambda r: "1")
+    sheet.write_bytes(b"\xef\xbb\xbf" + sheet.read_bytes())
+
+    loaded = evaluation.load_labels(sheet, criteria, tests, meta)
+
+    assert len(loaded) == len(rows)
+    assert "pair_id" in loaded[0]  # not "\ufeffpair_id"
+
+
+def test_the_committed_sheet_still_passes_integrity_with_a_byte_order_mark(
+    tmp_path, tests_and_criteria
+):
+    tests, criteria = tests_and_criteria
+    copy = tmp_path / "with_bom.csv"
+    copy.write_bytes(
+        b"\xef\xbb\xbf" + (ROOT / "data" / "labelled_pairs.csv").read_bytes()
+    )
+
+    _assert_sheet_intact(_read_committed_sheet(copy), tests, criteria)
+
+
+def test_a_sheet_saved_in_a_legacy_encoding_gives_a_clear_error(
+    tmp_path, tests_and_criteria
+):
+    tests, criteria = tests_and_criteria
+    sheet, meta, _ = _filled_sheet(tmp_path, tests, criteria, lambda r: "1")
+    # Spreadsheet programs saving plain "CSV" on Windows write the dash as 0x97.
+    sheet.write_bytes(sheet.read_text(encoding="utf-8").encode("cp1252", "replace"))
+    assert b"\x97" in sheet.read_bytes()
+
+    with pytest.raises(evaluation.EvaluationError, match="CSV UTF-8"):
+        evaluation.load_labels(sheet, criteria, tests, meta)
+
+
+def test_the_cli_reports_a_legacy_encoding_as_an_error_not_a_traceback(
+    tmp_path, tests_and_criteria, capsys
+):
+    tests, criteria = tests_and_criteria
+    sheet, meta, _ = _filled_sheet(tmp_path, tests, criteria, lambda r: "1")
+    sheet.write_bytes(sheet.read_text(encoding="utf-8").encode("cp1252", "replace"))
+
+    code = cli.main(
+        ["evaluate", "mapping", "--spec", str(SPEC), "--criteria", str(CRITERIA)]
+        + ["--labels", str(sheet), "--meta", str(meta)]
+        + ["--output", str(tmp_path / "out")]
+    )
+
+    assert code == 2
+    assert "not valid UTF-8" in capsys.readouterr().err
+
+
+# --- self-agreement: relabel sheet ---------------------------------------------
+
+
+def _first_rows(tests, criteria, tmp_path, label_for=lambda r: "0"):
+    sheet, meta, _ = _filled_sheet(tmp_path, tests, criteria, label_for)
+    return evaluation.load_labels(sheet, criteria, tests, meta), sheet, meta
+
+
+def test_relabel_sheet_is_a_blank_subset_of_the_first_sheet(
+    tmp_path, tests_and_criteria
+):
+    tests, criteria = tests_and_criteria
+    first, _, _ = _first_rows(tests, criteria, tmp_path, lambda r: "1")
+
+    rows = evaluation.make_relabel_rows(first, size=15)
+
+    assert len(rows) == 15
+    assert len({r["pair_id"] for r in rows}) == 15
+    by_id = {r["pair_id"]: r for r in first}
+    for row in rows:
+        assert list(row) == evaluation.LABEL_COLUMNS
+        assert row["label"] == "" and row["notes"] == ""
+        original = by_id[row["pair_id"]]
+        for column in evaluation.LABEL_COLUMNS:
+            if column not in ("label", "notes"):
+                assert row[column] == original[column]
+
+
+def test_relabel_selection_cannot_depend_on_the_first_labels(
+    tmp_path, tests_and_criteria
+):
+    tests, criteria = tests_and_criteria
+    all_no, _, _ = _first_rows(tests, criteria, tmp_path / "a", lambda r: "0")
+    mixed, _, _ = _first_rows(
+        tests, criteria, tmp_path / "b", lambda r: "1" if r["split"] == "dev" else "0"
+    )
+
+    assert evaluation.make_relabel_rows(
+        all_no, size=12
+    ) == evaluation.make_relabel_rows(mixed, size=12)
+
+
+def test_relabel_is_deterministic_seed_dependent_and_reordered(
+    tmp_path, tests_and_criteria
+):
+    tests, criteria = tests_and_criteria
+    first, _, _ = _first_rows(tests, criteria, tmp_path)
+
+    again = evaluation.make_relabel_rows(first, size=20, seed=1)
+    other = evaluation.make_relabel_rows(first, size=20, seed=2)
+
+    assert again == evaluation.make_relabel_rows(first, size=20, seed=1)
+    assert [r["pair_id"] for r in again] != [r["pair_id"] for r in other]
+    first_order = [
+        r["pair_id"] for r in first if r["pair_id"] in {x["pair_id"] for x in again}
+    ]
+    assert [r["pair_id"] for r in again] != first_order
+
+
+@pytest.mark.parametrize("size", [0, -1, 41])
+def test_relabel_rejects_an_impossible_size(tmp_path, tests_and_criteria, size):
+    tests, criteria = tests_and_criteria
+    first, _, _ = _first_rows(tests, criteria, tmp_path)
+
+    with pytest.raises(evaluation.EvaluationError, match="size must be between"):
+        evaluation.make_relabel_rows(first, size=size)
+
+
+def test_relabel_rejects_a_first_sheet_with_duplicate_pairs(
+    tmp_path, tests_and_criteria
+):
+    tests, criteria = tests_and_criteria
+    first, _, _ = _first_rows(tests, criteria, tmp_path)
+
+    with pytest.raises(evaluation.EvaluationError, match="duplicate"):
+        evaluation.make_relabel_rows([*first, first[0]], size=5)
+
+
+def test_cli_relabel_writes_a_blank_subset_and_protects_existing_files(
+    tmp_path, capsys
+):
+    committed = ROOT / "data" / "labelled_pairs.csv"
+    before = committed.read_bytes()
+    output = tmp_path / "relabel.csv"
+    base = ["evaluate", "relabel", "--labels", str(committed)]
+
+    assert cli.main([*base, "--output", str(output), "--size", "10"]) == 0
+    assert "without looking at your first labels" in capsys.readouterr().out
+    rows = _read_committed_sheet(output)
+    assert len(rows) == 10 and all(r["label"] == "" for r in rows)
+
+    assert cli.main([*base, "--output", str(output)]) == 2  # exists, no --force
+    assert "refusing to overwrite" in capsys.readouterr().err
+    assert cli.main([*base, "--output", str(committed)]) == 2  # never the first sheet
+    assert "must not be the first sheet" in capsys.readouterr().err
+    assert cli.main([*base, "--output", str(output), "--size", "5", "--force"]) == 0
+    assert len(_read_committed_sheet(output)) == 5
+    assert committed.read_bytes() == before  # the committed sheet was never touched
+
+
+# --- self-agreement: report ----------------------------------------------------
+
+
+def _labelled(rows, labels, notes=None):
+    """Copies of rows with the given labels (and optional notes) filled in."""
+    out = []
+    for index, (row, label) in enumerate(zip(rows, labels, strict=True)):
+        out.append({**row, "label": label, "notes": (notes or {}).get(index, "")})
+    return out
+
+
+def test_agreement_hand_worked_example(tmp_path, tests_and_criteria):
+    # 10 pairs, five yes. The second pass flips one yes to no and one no to yes.
+    # Observed agreement 8/10; each pass is 50% yes, so chance agreement is 0.5
+    # and kappa = (0.8 - 0.5) / (1 - 0.5) = 0.6.
+    tests, criteria = tests_and_criteria
+    base, _, _ = _first_rows(tests, criteria, tmp_path)
+    rows = base[:10]
+    first = _labelled(rows, ["1"] * 5 + ["0"] * 5)
+    second = _labelled(rows, ["0"] + ["1"] * 4 + ["0"] * 4 + ["1"])
+
+    report = evaluation.evaluate_agreement(first, second)
+
+    assert report["pairs_compared"] == 10
+    assert report["agreements"] == 8
+    assert report["observed_agreement"] == 0.8
+    assert report["cohens_kappa"] == pytest.approx(0.6)
+    assert [d["pair_id"] for d in report["disagreements"]] == sorted(
+        [rows[0]["pair_id"], rows[9]["pair_id"]]
+    )
+    assert {
+        d["pair_id"]: (d["first_label"], d["second_label"])
+        for d in report["disagreements"]
+    } == {
+        rows[0]["pair_id"]: (1, 0),
+        rows[9]["pair_id"]: (0, 1),
+    }
+    assert (report["positives_first"], report["positives_second"]) == (5, 5)
+
+
+def test_only_the_relabelled_subset_is_compared(tmp_path, tests_and_criteria):
+    tests, criteria = tests_and_criteria
+    base, _, _ = _first_rows(tests, criteria, tmp_path)
+    first = _labelled(base, ["1" if i % 2 else "0" for i in range(len(base))])
+    second = _labelled(base[:6], [first[i]["label"] for i in range(6)])
+
+    report = evaluation.evaluate_agreement(first, second)
+
+    assert report["pairs_compared"] == 6
+    assert report["first_sheet_pairs"] == 40
+    assert report["observed_agreement"] == 1.0
+    assert report["cohens_kappa"] == 1.0
+    assert report["disagreements"] == []
+
+
+def test_kappa_is_undefined_when_every_label_is_the_same(tmp_path, tests_and_criteria):
+    tests, criteria = tests_and_criteria
+    base, _, _ = _first_rows(tests, criteria, tmp_path)
+    first = _labelled(base[:5], ["0"] * 5)
+
+    report = evaluation.evaluate_agreement(first, first)
+
+    assert report["observed_agreement"] == 1.0
+    assert report["cohens_kappa"] is None
+    assert "undefined" in evaluation.agreement_markdown(report)
+
+
+def test_agreement_counts_rows_marked_unsure(tmp_path, tests_and_criteria):
+    tests, criteria = tests_and_criteria
+    base, _, _ = _first_rows(tests, criteria, tmp_path)
+    rows = base[:4]
+    first = _labelled(
+        rows, ["1", "0", "1", "0"], {0: "Unsure", 2: "unsure about field"}
+    )
+    second = _labelled(rows, ["1", "0", "0", "0"], {2: "UNSURE"})
+
+    report = evaluation.evaluate_agreement(first, second)
+
+    assert (report["unsure_first"], report["unsure_second"]) == (2, 1)
+
+
+def test_agreement_rejects_pairs_that_are_not_in_the_first_sheet(
+    tmp_path, tests_and_criteria
+):
+    tests, criteria = tests_and_criteria
+    base, _, _ = _first_rows(tests, criteria, tmp_path)
+    first = _labelled(base[:5], ["0"] * 5)
+    stranger = _labelled(base[5:6], ["0"])
+
+    with pytest.raises(evaluation.EvaluationError, match="not in the first sheet"):
+        evaluation.evaluate_agreement(first, stranger)
+    with pytest.raises(evaluation.EvaluationError, match="no pairs to compare"):
+        evaluation.evaluate_agreement(first, [])
+
+
+def test_agreement_markdown_is_honest_about_what_it_measures(
+    tmp_path, tests_and_criteria
+):
+    tests, criteria = tests_and_criteria
+    base, _, _ = _first_rows(tests, criteria, tmp_path)
+    rows = base[:10]
+    report = evaluation.evaluate_agreement(
+        _labelled(rows, ["1"] * 5 + ["0"] * 5),
+        _labelled(rows, ["0"] + ["1"] * 4 + ["0"] * 4 + ["1"]),
+    )
+
+    text = evaluation.agreement_markdown(report)
+
+    assert "not agreement between people" in text
+    assert "one changed label moves observed agreement by 10.0 points" in text
+    assert "0.800" in text and "0.600" in text
+    assert text.count("\n| REQ-") == 2  # the two disagreements, listed
+
+
+def test_agreement_markdown_with_no_disagreements(tmp_path, tests_and_criteria):
+    tests, criteria = tests_and_criteria
+    base, _, _ = _first_rows(tests, criteria, tmp_path)
+    rows = base[:4]
+    labels = _labelled(rows, ["1", "0", "1", "0"])
+
+    text = evaluation.agreement_markdown(evaluation.evaluate_agreement(labels, labels))
+
+    assert "None." in text
+
+
+def test_agreement_output_is_deterministic(tmp_path, tests_and_criteria):
+    tests, criteria = tests_and_criteria
+    base, _, _ = _first_rows(tests, criteria, tmp_path)
+    first = _labelled(base[:10], ["1", "0"] * 5)
+    second = _labelled(base[:10], ["1", "1", "1", "0"] * 2 + ["1", "0"])
+
+    one = evaluation.evaluate_agreement(first, second)
+
+    assert one == evaluation.evaluate_agreement(first, second)
+    assert json.dumps(one, sort_keys=True) == json.dumps(
+        evaluation.evaluate_agreement(first, second), sort_keys=True
+    )
+
+
+def test_cli_relabel_then_agreement_end_to_end(tmp_path, tests_and_criteria, capsys):
+    tests, criteria = tests_and_criteria
+    first_sheet, meta, _ = _filled_sheet(
+        tmp_path, tests, criteria, lambda r: "1" if r["split"] == "dev" else "0"
+    )
+    second_sheet = tmp_path / "second.csv"
+    common = ["--spec", str(SPEC), "--criteria", str(CRITERIA), "--meta", str(meta)]
+
+    assert (
+        cli.main(
+            ["evaluate", "relabel", "--labels", str(first_sheet)]
+            + ["--output", str(second_sheet), "--size", "10"]
+        )
+        == 0
+    )
+    # A blank second sheet cannot be compared yet.
+    run = ["evaluate", "agreement", *common, "--labels", str(first_sheet)]
+    run += ["--relabels", str(second_sheet), "--output", str(tmp_path / "out")]
+    assert cli.main(run) == 2
+    assert "label must be 1 or 0" in capsys.readouterr().err
+
+    # Label the same way as the first pass, except flip two.
+    first_labels = {
+        r["pair_id"]: r["label"] for r in _read_committed_sheet(first_sheet)
+    }
+
+    def fill(rows):
+        for index, row in enumerate(rows):
+            label = first_labels[row["pair_id"]]
+            row["label"] = ("1" if label == "0" else "0") if index < 2 else label
+
+    _rewrite(second_sheet, fill)
+    assert cli.main(run) == 0
+
+    report = json.loads((tmp_path / "out" / "agreement.json").read_text())
+    assert report["pairs_compared"] == 10
+    assert report["agreements"] == 8
+    assert report["observed_agreement"] == 0.8
+    assert len(report["disagreements"]) == 2
+    assert (tmp_path / "out" / "agreement.md").exists()
+    assert "Agreed on 8 of 10" in capsys.readouterr().out
