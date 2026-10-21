@@ -8,9 +8,9 @@ from pathlib import Path
 
 import pytest
 
+from assay import runner
 from assay.baseline import generate_cases
 from assay.runner import (
-    _validate_base_url,
     ManifestEntry,
     expected_status,
     export_tests,
@@ -436,7 +436,7 @@ def test_cli_reports_an_unsupported_spec_as_an_error(
     ],
 )
 def test_external_base_url_accepts_absolute_http_urls(url: str) -> None:
-    _validate_base_url(url)
+    runner._validate_base_url(url)
 
 
 @pytest.mark.parametrize(
@@ -470,8 +470,6 @@ def test_exported_client_fixture_supports_external_http_target(tmp_path: Path) -
 def test_run_tests_passes_only_explicit_external_target_to_subprocess(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    from assay import runner
-
     out = tmp_path / "generated"
     out.mkdir()
     captured_environments: list[dict[str, str]] = []
