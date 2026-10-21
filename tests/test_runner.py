@@ -17,6 +17,7 @@ from assay.runner import (
     main,
     run,
     run_tests,
+    _validate_base_url,
 )
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -420,3 +421,44 @@ def test_cli_reports_an_unsupported_spec_as_an_error(
 
     assert code == 2
     assert "only path parameters" in capsys.readouterr().err
+
+
+
+# --- external target mode ----------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        "http://localhost:8000",
+        "https://staging.example.test/api",
+        "http://127.0.0.1:8080/",
+    ],
+)
+def test_external_base_url_accepts_absolute_http_urls(url: str) -> None:
+    _validate_base_url(url)
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        "",
+        "localhost:8000",
+        "ftp://example.test",
+        "https:///missing-host",
+        "http://user:secret@example.test",
+    ],
+)
+def test_external_base_url_rejects_invalid_or_embedded_credentials(url: str) -> None:
+    with pytest.raises(ValueError, match="--base-url"):
+        _validate_base_url(url)
+
+
+def test_exported_client_fixture_supports_external_http_target(tmp_path: Path) -> None:
+    export_tests(SPEC, tmp_path / "out")
+    fixture = (tmp_path / "out" / "conftest.py").read_text(encoding="utf-8")
+
+    assert 'os.environ.get("ASSAY_BASE_URL")' in fixture
+    assert "httpx.Client(base_url=" in fixture
+    assert "yield TestClient(" in fixture
+    assert "timeout=10.0" in fixture
