@@ -8,7 +8,7 @@ The MVP is deterministic and fully offline. No API key is required. Optional LLM
 
 ## Status
 
-Milestone 5 — evaluation harness (metrics, hand-written API mutants, a blind labelling sheet) on top of offline requirement mapping, the pytest exporter and runner and the schema baseline. The 40-pair sheet is labelled (5 positives). At the provisional threshold 0.4 the mapper scores 1 of 1 on the development half and 4 of 4 on the test half with no false positives, but the rules were written after seeing labelled errors, one person labelled, and 5 positives is too few for a quality claim; the second labelling pass and the threshold freeze are still pending. See docs/SCHEMA_BASELINE.md, docs/RUNNER.md, docs/MAPPING.md, docs/METRICS.md and docs/LABELLING.md, and PLAN.md for the project roadmap.
+Milestone 5 — evaluation harness (metrics, hand-written API mutants, a blind labelling sheet) on top of offline requirement mapping, the pytest exporter and runner and the schema baseline. The 40-pair sheet is labelled (5 positives). At the default threshold 0.4 (frozen, not tuned, because the dev half has only 1 positive) the mapper scores 1 of 1 on the development half and 4 of 4 on the test half with no false positives, but the rules were written after seeing labelled errors, one person labelled, and 5 positives is too few for a quality claim; the second labelling pass is still pending. See docs/SCHEMA_BASELINE.md, docs/RUNNER.md, docs/MAPPING.md, docs/METRICS.md and docs/LABELLING.md, and PLAN.md for the project roadmap.
 
 ## Development
 

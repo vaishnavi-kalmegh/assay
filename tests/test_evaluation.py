@@ -1046,3 +1046,51 @@ def test_cli_relabel_then_agreement_end_to_end(tmp_path, tests_and_criteria, cap
     assert len(report["disagreements"]) == 2
     assert (tmp_path / "out" / "agreement.md").exists()
     assert "Agreed on 8 of 10" in capsys.readouterr().out
+
+
+# --- threshold tuning needs enough dev positives -------------------------------
+
+
+def _report_with_dev_positives(tmp_path, tests_and_criteria, dev_positives):
+    """Evaluate a sheet where exactly ``dev_positives`` dev rows are labelled 1."""
+    tests, criteria = tests_and_criteria
+    seen = {"dev": 0}
+
+    def labeller(row):
+        if row["split"] != "dev":
+            return "0"
+        seen["dev"] += 1
+        return "1" if seen["dev"] <= dev_positives else "0"
+
+    sheet, meta, _ = _filled_sheet(tmp_path, tests, criteria, labeller)
+    rows = evaluation.load_labels(sheet, criteria, tests, meta)
+    return evaluation.evaluate_mapping(rows, criteria, tests, threshold=0.4, top_k=3)
+
+
+@pytest.mark.parametrize("dev_positives", [0, 1, evaluation.MIN_DEV_POSITIVES - 1])
+def test_too_few_dev_positives_means_no_threshold_is_chosen(
+    tmp_path, tests_and_criteria, dev_positives
+):
+    report = _report_with_dev_positives(tmp_path, tests_and_criteria, dev_positives)
+
+    tuning = report["threshold_tuning"]
+    assert tuning["tuned"] is False
+    assert tuning["dev_positives"] == dev_positives
+    assert tuning["kept_threshold"] == 0.4
+    assert report["dev_chosen_threshold"] is None
+    assert "dev_chosen_threshold_scores" not in report
+    markdown = evaluation.mapping_markdown(report)
+    assert "Threshold not tuned" in markdown
+    assert "Dev-chosen threshold" not in markdown
+
+
+@pytest.mark.parametrize("dev_positives", [evaluation.MIN_DEV_POSITIVES, 12])
+def test_enough_dev_positives_lets_the_sweep_choose(
+    tmp_path, tests_and_criteria, dev_positives
+):
+    report = _report_with_dev_positives(tmp_path, tests_and_criteria, dev_positives)
+
+    assert report["threshold_tuning"]["tuned"] is True
+    assert report["dev_chosen_threshold"] is not None
+    assert "dev_chosen_threshold_scores" in report
+    assert "Dev-chosen threshold:" in evaluation.mapping_markdown(report)
