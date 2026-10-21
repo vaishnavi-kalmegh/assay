@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import pprint
 import re
 import subprocess
 import sys
@@ -188,9 +189,14 @@ def _render_test(criterion: Criterion) -> str:
         )
     else:
         body = _product_body(criterion)
-        lines.append(
-            f"    response = client.{method.lower()}({path!r}, json={body!r})"
-        )
+        body_source = pprint.pformat(body, width=64, sort_dicts=True)
+        indented_body = body_source.replace("\n", "\n        ")
+        lines += [
+            f"    response = client.{method.lower()}(",
+            f"        {path!r},",
+            f"        json={indented_body},",
+            "    )",
+        ]
 
     lines.append(f"    assert response.status_code == {status}, response.text")
     return "\n".join(lines)
