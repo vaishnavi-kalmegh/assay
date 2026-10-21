@@ -224,7 +224,7 @@ def test_a_whole_request_test_is_eligible_for_any_field() -> None:
 
 
 def test_low_scoring_eligible_tests_are_reported_as_below_threshold() -> None:
-    weak = case(name="POST /items — body.name — unrelated words entirely")
+    weak = case(name="POST /items — body.name — just below minimum length 3 unrelated words")
 
     row = map_requirements([criterion()], [weak], threshold=0.99).rows[0]
 
@@ -243,20 +243,26 @@ def test_candidates_are_ranked_best_first_and_matches_obey_the_threshold() -> No
         case_id="BASE-A", name="POST /items — body.name — invalid field type"
     )
 
-    row = map_requirements([criterion()], [worse, best], threshold=0.0).rows[0]
+    row = map_requirements(
+        [criterion(constraint="unspecified")], [worse, best], threshold=0.0
+    ).rows[0]
 
     assert [c.case_id for c in row.candidates] == ["BASE-B", "BASE-A"]
     assert [c.rank for c in row.candidates] == [1, 2]
     assert row.candidates[0].score > row.candidates[1].score
     cutoff = row.candidates[0].score
-    strict = map_requirements([criterion()], [worse, best], threshold=cutoff).rows[0]
+    strict = map_requirements(
+        [criterion(constraint="unspecified")], [worse, best], threshold=cutoff
+    ).rows[0]
     assert [m.case_id for m in strict.matches] == ["BASE-B"]
 
 
 def test_equal_scores_are_ordered_by_case_id() -> None:
     twins = [case(case_id="BASE-Z"), case(case_id="BASE-M")]
 
-    row = map_requirements([criterion()], twins, threshold=0.0).rows[0]
+    row = map_requirements(
+        [criterion(constraint="unspecified")], twins, threshold=0.0
+    ).rows[0]
 
     assert [c.case_id for c in row.candidates] == ["BASE-M", "BASE-Z"]
 
