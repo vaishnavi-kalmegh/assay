@@ -217,7 +217,9 @@ def test_a_whole_request_test_is_eligible_for_any_field() -> None:
     )
 
     row = map_requirements(
-        [criterion(expected_status=201)], [whole], threshold=0.0
+        [criterion(expected_status=201, constraint="unspecified")],
+        [whole],
+        threshold=0.0
     ).rows[0]
 
     assert [c.case_id for c in row.candidates] == ["BASE-A"]
