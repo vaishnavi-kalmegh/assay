@@ -464,3 +464,50 @@ def test_exported_client_fixture_supports_external_http_target(tmp_path: Path) -
     assert "httpx.Client(base_url=" in fixture
     assert "yield TestClient(" in fixture
     assert "timeout=10.0" in fixture
+
+
+
+def test_run_tests_passes_only_explicit_external_target_to_subprocess(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from assay import runner
+
+    out = tmp_path / "generated"
+    out.mkdir()
+    captured_environments: list[dict[str, str]] = []
+
+    def fake_run(command, **kwargs):
+        captured_environments.append(kwargs["env"])
+        junit_arg = next(arg for arg in command if arg.startswith("--junitxml="))
+        junit_path = Path(junit_arg.split("=", 1)[1])
+        junit_path.write_text(
+            '<testsuites><testsuite><testcase name="test_base">'
+            '<properties><property name="actual_status" value="200" />'
+            '</properties></testcase></testsuite></testsuites>',
+            encoding="utf-8",
+        )
+        return subprocess.CompletedProcess(command, 0, "1 passed", "")
+
+    monkeypatch.setattr(runner.subprocess, "run", fake_run)
+    monkeypatch.setenv("ASSAY_BASE_URL", "http://ambient.example.test")
+
+    entry = ManifestEntry(
+        case_id="BASE-TEST",
+        name="GET /health",
+        kind="valid",
+        method="GET",
+        path="/health",
+        field="",
+        expected_valid=True,
+        expected_status=200,
+        file="test_health.py",
+        function="test_base",
+        requirements=[],
+    )
+    runner.run_tests(
+        out, [entry], tmp_path / "external.json", base_url="http://127.0.0.1:8000"
+    )
+    runner.run_tests(out, [entry], tmp_path / "local.json")
+
+    assert captured_environments[0]["ASSAY_BASE_URL"] == "http://127.0.0.1:8000"
+    assert "ASSAY_BASE_URL" not in captured_environments[1]
