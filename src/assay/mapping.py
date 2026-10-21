@@ -48,6 +48,7 @@ GapReason = Literal[
     "no_test_with_expected_status",
     "needs_response_body_check",
     "no_test_for_field",
+    "no_test_for_constraint",
     "below_threshold",
 ]
 
@@ -291,6 +292,50 @@ def baseline_tests_from_spec(spec: dict[str, Any]) -> list[MappableTest]:
 # --- mapping -----------------------------------------------------------------
 
 
+def _constraint_compatible(criterion: Criterion, test: MappableTest) -> bool:
+    """Reject tests whose boundary direction does not exercise the criterion.
+
+    Operation, status, and field are checked separately. For recognized schema
+    constraints, the generated case kind/name must also match the relevant
+    boundary and outcome. Unknown constraints retain the previous text-ranking
+    behavior rather than being guessed.
+    """
+    constraint = criterion.constraint
+    success = 200 <= criterion.expected_status < 300
+    value_tokens = tokenize(_flatten(criterion.value))
+    value = value_tokens[0] if value_tokens else ""
+
+    if constraint == "min_length":
+        phrase = f"minimum length {value}" if success else f"just below minimum length {value}"
+        return phrase in test.name.lower()
+    if constraint == "max_length":
+        phrase = f"maximum length {value}" if success else f"just above maximum length {value}"
+        return phrase in test.name.lower()
+    if constraint == "greater_than":
+        phrase = (
+            f"just inside exclusive minimum {value}"
+            if success else f"just outside exclusive minimum {value}"
+        )
+        return phrase in test.name.lower()
+    if constraint == "greater_than_or_equal":
+        phrase = f"minimum boundary {value}" if success else f"just outside minimum {value}"
+        return phrase in test.name.lower()
+    if constraint == "less_than_or_equal":
+        phrase = f"maximum boundary {value}" if success else f"just outside maximum {value}"
+        return phrase in test.name.lower()
+    if constraint == "enum":
+        if success:
+            return test.kind == "valid" and test.expected_valid
+        return test.kind == "invalid_enum" and "invalid enum value" in test.name.lower()
+    if constraint == "required":
+        if success:
+            return test.kind == "valid" and test.expected_valid
+        return test.kind == "missing_required" and "missing required field" in test.name.lower()
+    if constraint == "not_found":
+        return "not found" in test.name.lower() and test.expected_status == 404
+    return True
+
+
 def _gap_row(
     criterion: Criterion, reason: GapReason, detail: str, eligible: int = 0
 ) -> TraceRow:
@@ -381,6 +426,20 @@ def map_requirements(
                 + ", ".join(targeted),
             ))
             continue
+        constraint_eligible = [
+            test for test in eligible if _constraint_compatible(criterion, test)
+        ]
+        if not constraint_eligible:
+            rows.append(_gap_row(
+                criterion,
+                "no_test_for_constraint",
+                f"eligible tests do not exercise constraint {criterion.constraint} "
+                f"with value {criterion.value!r} and expected status "
+                f"{criterion.expected_status}",
+                eligible=len(eligible),
+            ))
+            continue
+        eligible = constraint_eligible
         ranked = sorted(
             (
                 (round(float(scores[row_index, position[test.case_id]]), 4), test)
