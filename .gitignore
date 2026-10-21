@@ -11,3 +11,4 @@ venv/
 .env
 reports/
 generated_tests/
+generated_acceptance/
