@@ -431,7 +431,7 @@ def test_cli_reports_an_unsupported_spec_as_an_error(
     "url",
     [
         "http://localhost:8000",
-        "https://staging.example.test/api",
+        "https://staging.example.test",
         "http://127.0.0.1:8080/",
     ],
 )
@@ -447,6 +447,8 @@ def test_external_base_url_accepts_absolute_http_urls(url: str) -> None:
         "ftp://example.test",
         "https:///missing-host",
         "http://user:secret@example.test",
+        "http://localhost:8000/api",
+        "http://localhost:8000?debug=1",
     ],
 )
 def test_external_base_url_rejects_invalid_or_embedded_credentials(url: str) -> None:
