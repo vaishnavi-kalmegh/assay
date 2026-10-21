@@ -306,10 +306,10 @@ def _constraint_compatible(criterion: Criterion, test: MappableTest) -> bool:
     value = value_tokens[0] if value_tokens else ""
 
     if constraint == "min_length":
-        phrase = f"minimum length {value}" if success else f"just below minimum length {value}"
+        phrase = (\n            f"minimum length {value}"\n            if success\n            else f"just below minimum length {value}"\n        )
         return phrase in test.name.lower()
     if constraint == "max_length":
-        phrase = f"maximum length {value}" if success else f"just above maximum length {value}"
+        phrase = (\n            f"maximum length {value}"\n            if success\n            else f"just above maximum length {value}"\n        )
         return phrase in test.name.lower()
     if constraint == "greater_than":
         phrase = (
@@ -318,10 +318,10 @@ def _constraint_compatible(criterion: Criterion, test: MappableTest) -> bool:
         )
         return phrase in test.name.lower()
     if constraint == "greater_than_or_equal":
-        phrase = f"minimum boundary {value}" if success else f"just outside minimum {value}"
+        phrase = (\n            f"minimum boundary {value}"\n            if success\n            else f"just outside minimum {value}"\n        )
         return phrase in test.name.lower()
     if constraint == "less_than_or_equal":
-        phrase = f"maximum boundary {value}" if success else f"just outside maximum {value}"
+        phrase = (\n            f"maximum boundary {value}"\n            if success\n            else f"just outside maximum {value}"\n        )
         return phrase in test.name.lower()
     if constraint == "enum":
         if success:
@@ -330,7 +330,7 @@ def _constraint_compatible(criterion: Criterion, test: MappableTest) -> bool:
     if constraint == "required":
         if success:
             return test.kind == "valid" and test.expected_valid
-        return test.kind == "missing_required" and "missing required field" in test.name.lower()
+        return (\n            test.kind == "missing_required"\n            and "missing required field" in test.name.lower()\n        )
     if constraint == "not_found":
         return "not found" in test.name.lower() and test.expected_status == 404
     return True
