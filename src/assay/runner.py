@@ -466,7 +466,9 @@ def _validate_base_url(base_url: str) -> None:
         or not parsed.netloc
         or not parsed.hostname
     ):
-        raise ValueError("--base-url must be an absolute http:// or https:// URL")
+        raise ValueError(
+            "--base-url must be an absolute http:// or https:// URL"
+        )
     if parsed.username or parsed.password:
         raise ValueError(
             "--base-url must not contain credentials; configure auth separately"
