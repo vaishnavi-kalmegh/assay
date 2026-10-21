@@ -8,6 +8,7 @@ from pathlib import Path
 
 import pytest
 
+from assay import runner
 from assay.baseline import generate_cases
 from assay.runner import (
     ManifestEntry,
@@ -420,3 +421,91 @@ def test_cli_reports_an_unsupported_spec_as_an_error(
 
     assert code == 2
     assert "only path parameters" in capsys.readouterr().err
+
+
+
+# --- external target mode ----------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        "http://localhost:8000",
+        "https://staging.example.test",
+        "http://127.0.0.1:8080/",
+    ],
+)
+def test_external_base_url_accepts_absolute_http_urls(url: str) -> None:
+    runner._validate_base_url(url)
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        "",
+        "localhost:8000",
+        "ftp://example.test",
+        "https:///missing-host",
+        "http://user:secret@example.test",
+        "http://localhost:8000/api",
+        "http://localhost:8000?debug=1",
+    ],
+)
+def test_external_base_url_rejects_invalid_or_embedded_credentials(url: str) -> None:
+    with pytest.raises(ValueError, match="--base-url"):
+        runner._validate_base_url(url)
+
+
+def test_exported_client_fixture_supports_external_http_target(tmp_path: Path) -> None:
+    export_tests(SPEC, tmp_path / "out")
+    fixture = (tmp_path / "out" / "conftest.py").read_text(encoding="utf-8")
+
+    assert 'os.environ.get("ASSAY_BASE_URL")' in fixture
+    assert "httpx.Client(base_url=" in fixture
+    assert "yield TestClient(" in fixture
+    assert "timeout=10.0" in fixture
+
+
+
+def test_run_tests_passes_only_explicit_external_target_to_subprocess(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    out = tmp_path / "generated"
+    out.mkdir()
+    captured_environments: list[dict[str, str]] = []
+
+    def fake_run(command, **kwargs):
+        captured_environments.append(kwargs["env"])
+        junit_arg = next(arg for arg in command if arg.startswith("--junitxml="))
+        junit_path = Path(junit_arg.split("=", 1)[1])
+        junit_path.write_text(
+            '<testsuites><testsuite><testcase name="test_base">'
+            '<properties><property name="actual_status" value="200" />'
+            '</properties></testcase></testsuite></testsuites>',
+            encoding="utf-8",
+        )
+        return subprocess.CompletedProcess(command, 0, "1 passed", "")
+
+    monkeypatch.setattr(runner.subprocess, "run", fake_run)
+    monkeypatch.setenv("ASSAY_BASE_URL", "http://ambient.example.test")
+
+    entry = ManifestEntry(
+        case_id="BASE-TEST",
+        name="GET /health",
+        kind="valid",
+        method="GET",
+        path="/health",
+        field="",
+        expected_valid=True,
+        expected_status=200,
+        file="test_health.py",
+        function="test_base",
+        requirements=[],
+    )
+    runner.run_tests(
+        out, [entry], tmp_path / "external.json", base_url="http://127.0.0.1:8000"
+    )
+    runner.run_tests(out, [entry], tmp_path / "local.json")
+
+    assert captured_environments[0]["ASSAY_BASE_URL"] == "http://127.0.0.1:8000"
+    assert "ASSAY_BASE_URL" not in captured_environments[1]

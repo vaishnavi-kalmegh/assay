@@ -53,6 +53,7 @@ _CONFTEST = '''\
 
 import os
 
+import httpx
 import pytest
 from fastapi.testclient import TestClient
 
@@ -61,13 +62,15 @@ from assay.demo_api import create_app
 
 @pytest.fixture
 def client():
-    """A client for a brand-new, empty demo API. Nothing is shared between tests.
-
-    ASSAY_MUTANT is set only by `assay evaluate mutants`; unset means the real API.
-    """
-    return TestClient(
-        create_app(seeded=False, mutant=os.environ.get("ASSAY_MUTANT") or None)
-    )
+    """Use an explicitly configured HTTP target or an isolated demo API."""
+    base_url = os.environ.get("ASSAY_BASE_URL")
+    if base_url:
+        with httpx.Client(base_url=base_url.rstrip("/") + "/", timeout=10.0) as target:
+            yield target
+    else:
+        yield TestClient(
+            create_app(seeded=False, mutant=os.environ.get("ASSAY_MUTANT") or None)
+        )
 
 
 @pytest.fixture
@@ -374,6 +377,7 @@ def run_tests(
     entries: list[ManifestEntry],
     results_path: Path,
     mutant: str | None = None,
+    base_url: str | None = None,
 ) -> dict[str, Any]:
     """Run the generated suite with pytest and write sorted JSON results.
 
@@ -385,8 +389,12 @@ def run_tests(
     junit_path = output_dir / "junit.xml"
     environment = {**os.environ, "PYTHONDONTWRITEBYTECODE": "1"}
     environment.pop("ASSAY_MUTANT", None)
+    environment.pop("ASSAY_BASE_URL", None)
     if mutant is not None:
         environment["ASSAY_MUTANT"] = mutant
+    if base_url is not None:
+        _validate_base_url(base_url)
+        environment["ASSAY_BASE_URL"] = base_url.rstrip("/")
     completed = subprocess.run(
         [
             sys.executable,
@@ -448,15 +456,39 @@ def run_tests(
     return report
 
 
+def _validate_base_url(base_url: str) -> None:
+    """Reject malformed target URLs before generated tests are run."""
+    from urllib.parse import urlsplit
+
+    parsed = urlsplit(base_url)
+    if (
+        parsed.scheme not in {"http", "https"}
+        or not parsed.netloc
+        or not parsed.hostname
+    ):
+        raise ValueError(
+            "--base-url must be an absolute http:// or https:// URL"
+        )
+    if parsed.username or parsed.password:
+        raise ValueError(
+            "--base-url must not contain credentials; configure auth separately"
+        )
+    if parsed.path not in {"", "/"} or parsed.query or parsed.fragment:
+        raise ValueError(
+            "--base-url must be the API origin only (no path, query, or fragment)"
+        )
+
+
 def run(
     spec_path: Path,
     output_dir: Path,
     results_path: Path,
     mapping_path: Path | None = None,
+    base_url: str | None = None,
 ) -> dict[str, Any]:
-    """Export the suite, run it, and write results."""
+    """Export the suite, run it, and write results against demo or external API."""
     entries = export_tests(spec_path, output_dir, mapping_path)
-    return run_tests(output_dir, entries, results_path)
+    return run_tests(output_dir, entries, results_path, base_url=base_url)
 
 
 def register_commands(commands: Any) -> None:
@@ -480,6 +512,14 @@ def register_commands(commands: Any) -> None:
                 type=Path,
                 default=Path("reports/baseline-results.json"),
             )
+            command.add_argument(
+                "--base-url",
+                default=None,
+                help=(
+                    "send requests to an already-running test/staging API instead "
+                    "of the bundled demo API"
+                ),
+            )
 
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -497,8 +537,18 @@ def handle(arguments: argparse.Namespace) -> int:
             entries = export_tests(arguments.spec, arguments.output, arguments.mapping)
             print(f"Exported {len(entries)} tests to {arguments.output}")
             return 0
+        if arguments.base_url:
+            print(
+                "WARNING: external API mode sends real HTTP requests and may create "
+                "resources. Use a disposable test/staging API, never production.",
+                file=sys.stderr,
+            )
         report = run(
-            arguments.spec, arguments.output, arguments.results, arguments.mapping
+            arguments.spec,
+            arguments.output,
+            arguments.results,
+            arguments.mapping,
+            base_url=getattr(arguments, "base_url", None),
         )
     except (OSError, ValueError, RuntimeError, subprocess.SubprocessError) as error:
         print(f"error: {error}", file=sys.stderr)

@@ -12,6 +12,9 @@ reads `criteria.yaml`.
     # optional: add requirement markers from a mapping file
     assay run --mapping mapping.json
 
+    # optional: run against an already-running test API
+    assay run --spec specs/openapi.json --base-url http://127.0.0.1:8000
+
 `export` writes the files only. `run` exports, runs the generated suite with
 pytest, and writes the results. Exit code: 0 all passed, 1 some test did not
 pass, 2 an error (bad spec, bad mapping, unusable output directory).
@@ -27,6 +30,28 @@ exporting twice gives identical bytes.
 The output directory is marked with `.assay-generated`. Re-exporting into it
 replaces the generated files. Exporting into a non-empty directory assay did not
 create is refused. `generated_tests/` and `reports/` are ignored by Git.
+
+## Running against another API (early, limited support)
+
+By default, generated tests use Assay's isolated in-process demo API. To send the
+same generated requests to an already-running external API, pass `--base-url`
+to `assay run`. The OpenAPI file passed with `--spec` must describe that API's
+actual contract.
+
+    assay run --spec specs/openapi.json --base-url http://127.0.0.1:8000
+
+Use an API origin only (scheme + host + optional port); do not include a path,
+query, or fragment. Only HTTP and HTTPS URLs are accepted. Assay emits a warning
+because external mode sends real requests and can create resources. **Use a
+disposable local test API or staging environment, never production.**
+
+This first version does not configure authentication, custom headers, TLS client
+certificates, or per-test data cleanup. The target must accept the generated
+requests without extra setup. Some generated cases create products and orders;
+use an isolated test environment whose data can safely be changed. The runner
+does not check response bodies, and the baseline only covers the supported
+OpenAPI subset documented elsewhere. External mode is an initial integration
+step, not a claim that every OpenAPI service is supported.
 
 ## Expected status
 
