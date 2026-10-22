@@ -256,7 +256,7 @@ def export_acceptance_tests(
         '"""Fixtures for generated acceptance tests."""\n\n'
         "import pytest\n"
         "from fastapi.testclient import TestClient\n\n"
-        "from assay.demo_api import create_app\n\n"
+        "from assay.demo_api import create_app\n\n\n"
         "@pytest.fixture\n"
         "def client():\n"
         "    with TestClient(create_app(seeded=False)) as test_client:\n"
