@@ -113,6 +113,12 @@ are; it does not replace them.
   ruled out (12), and pairs on other endpoints (8). It over-represents the
   hard cases on purpose. Precision and recall describe **this sample**, not all
   774 possible pairs.
+- **Not an independent holdout.** The mapper's rules were revised after labelled
+  errors were seen, and the test half was probably visible when they were written,
+  so the test-half result describes this sample and does not show the mapper
+  generalises. A claim of quality needs a newly drawn, independently labelled
+  sheet scored against a frozen mapper and configuration. The second pass below
+  measures your consistency with yourself; it does not fix this.
 - **Small.** With 40 pairs split into two halves of 20, one changed label moves
   a score by several points. Report counts next to every ratio.
 - **Frozen tests.** Labels are tied to the current generated test IDs. A test

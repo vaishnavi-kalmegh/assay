@@ -77,6 +77,25 @@ def case_id_fingerprint(tests: Sequence[MappableTest]) -> str:
     return hashlib.sha256(joined.encode("utf-8")).hexdigest()
 
 
+def _frozen_columns(row: dict[str, str]) -> dict[str, str]:
+    """Every column except the two a person fills in."""
+    return {k: row[k] for k in LABEL_COLUMNS if k not in ("label", "notes")}
+
+
+def pair_fingerprints(rows: Sequence[dict[str, str]]) -> dict[str, str]:
+    """pair ID -> hash of that pair's frozen columns, including its dev/test split.
+
+    Stored in the sheet metadata so the loader can refuse a sheet in which a pair
+    moved between halves or a descriptive column was edited.
+    """
+    return {
+        row["pair_id"]: hashlib.sha256(
+            json.dumps(_frozen_columns(row), sort_keys=True).encode("utf-8")
+        ).hexdigest()
+        for row in rows
+    }
+
+
 # --- sampling -----------------------------------------------------------------
 
 
@@ -223,6 +242,7 @@ def write_label_sheet(
         writer.writerows(rows)
     meta = {
         "case_id_fingerprint": case_id_fingerprint(tests),
+        "pair_fingerprints": pair_fingerprints(rows),
         "pairs": len(rows),
         "seed": seed,
         "splits": {
@@ -263,24 +283,80 @@ def _read_sheet(path: Path) -> list[dict[str, str]]:
         raise EvaluationError(f"cannot read {path}: {error}") from error
 
 
+def _read_meta(meta_path: Path, tests: Sequence[MappableTest]) -> dict[str, Any]:
+    """Load the sheet metadata (it must exist) and check the test-ID fingerprint."""
+    meta_path = Path(meta_path)
+    if not meta_path.exists():
+        raise EvaluationError(
+            f"{meta_path} is missing; it records which pairs and splits are frozen, "
+            "so the sheet cannot be checked without it"
+        )
+    meta = json.loads(meta_path.read_text(encoding="utf-8"))
+    if meta.get("case_id_fingerprint") != case_id_fingerprint(tests):
+        raise EvaluationError(
+            "the generated test IDs changed after these labels were made; the "
+            "labels no longer describe the current tests. Version the change "
+            "and relabel before evaluating."
+        )
+    return meta  # type: ignore[no-any-return]
+
+
+def _check_frozen_pairs(
+    rows: Sequence[dict[str, str]],
+    meta: dict[str, Any],
+    meta_path: Path,
+    *,
+    subset: bool,
+) -> None:
+    """The sheet must be the frozen one: same pairs, same splits, same columns."""
+    frozen = meta.get("pair_fingerprints")
+    if not isinstance(frozen, dict) or not frozen:
+        raise EvaluationError(
+            f"{meta_path} has no pair_fingerprints, so the dev/test split cannot be "
+            "verified"
+        )
+    current = pair_fingerprints(rows)
+    if not subset and set(current) != set(frozen):
+        raise EvaluationError(
+            "the sheet's pairs differ from the frozen set: "
+            f"{len(set(frozen) - set(current))} missing, "
+            f"{len(set(current) - set(frozen))} extra"
+        )
+    for pair_id, digest in current.items():
+        if pair_id not in frozen:
+            raise EvaluationError(f"pair {pair_id} is not in the frozen set")
+        if digest != frozen[pair_id]:
+            raise EvaluationError(
+                f"pair {pair_id}: a frozen column (including its dev/test split) "
+                "differs from the sheet that was drawn; only label and notes may "
+                "change"
+            )
+    if not subset:
+        if meta.get("pairs") != len(rows):
+            raise EvaluationError("the sheet's pair count differs from the metadata")
+        counts = {name: sum(1 for r in rows if r["split"] == name) for name in SPLITS}
+        if meta.get("splits") != counts:
+            raise EvaluationError("the sheet's split counts differ from the metadata")
+
+
 def load_labels(
     path: Path,
     criteria: Sequence[Criterion],
     tests: Sequence[MappableTest],
     meta_path: Path | None = None,
+    *,
+    subset: bool = False,
 ) -> list[dict[str, str]]:
-    """Read and validate a filled-in label sheet. Every problem is an error."""
+    """Read and validate a filled-in label sheet. Every problem is an error.
+
+    With ``meta_path`` the sheet is also checked against the frozen metadata, which
+    must exist. ``subset=True`` is for a re-labelling sheet that holds only some of
+    the pairs; each of its pairs must still match the frozen original.
+    """
     rows = _read_sheet(path)
     if not rows:
         raise EvaluationError(f"{path} contains no labelled pairs")
-    if meta_path is not None and Path(meta_path).exists():
-        meta = json.loads(Path(meta_path).read_text(encoding="utf-8"))
-        if meta.get("case_id_fingerprint") != case_id_fingerprint(tests):
-            raise EvaluationError(
-                "the generated test IDs changed after these labels were made; the "
-                "labels no longer describe the current tests. Version the change "
-                "and relabel before evaluating."
-            )
+    meta = _read_meta(meta_path, tests) if meta_path is not None else None
     criteria_ids = {item.id for item in criteria}
     case_ids = {item.case_id for item in tests}
     seen: set[str] = set()
@@ -304,6 +380,8 @@ def load_labels(
         if expected in seen:
             raise EvaluationError(f"{where}: duplicate pair {expected}")
         seen.add(expected)
+    if meta is not None and meta_path is not None:
+        _check_frozen_pairs(rows, meta, meta_path, subset=subset)
     return rows
 
 
@@ -404,8 +482,14 @@ def evaluate_mapping(
             }
         )
     dev_positives = sum(labels_by_split["dev"].values())
-    tuned = dev_positives >= MIN_DEV_POSITIVES
-    chosen = choose_threshold(sweep) if tuned else None
+    attempted = dev_positives >= MIN_DEV_POSITIVES
+    chosen = choose_threshold(sweep) if attempted else None
+    if not attempted:
+        reason: str | None = "too_few_dev_positives"
+    elif chosen is None:
+        reason = "no_defined_f1"
+    else:
+        reason = None
 
     reference = map_requirements(criteria, tests, threshold=threshold, top_k=top_k)
     strata = classify_pairs(criteria, tests, reference)
@@ -429,10 +513,12 @@ def evaluate_mapping(
         },
         "dev_sweep": sweep,
         "threshold_tuning": {
-            "tuned": tuned,
+            "attempted": attempted,
+            "tuned": chosen is not None,
+            "reason": reason,
             "dev_positives": dev_positives,
             "minimum_dev_positives": MIN_DEV_POSITIVES,
-            "kept_threshold": threshold if not tuned else chosen,
+            "kept_threshold": threshold if chosen is None else chosen,
         },
         "dev_chosen_threshold": chosen,
     }
@@ -702,6 +788,15 @@ def mapping_markdown(report: dict[str, Any]) -> str:
     tuning = report["threshold_tuning"]
     if tuning["tuned"]:
         lines += ["", f"Dev-chosen threshold: {chosen}"]
+    elif tuning["reason"] == "no_defined_f1":
+        lines += [
+            "",
+            "Threshold not tuned: the dev half has enough positives "
+            f"({tuning['dev_positives']}), but the mapper predicted no labelled dev "
+            "pair at any threshold, so F1 is undefined everywhere. The configured "
+            f"threshold {tuning['kept_threshold']} is kept. It is a default, not a "
+            "measured optimum.",
+        ]
     else:
         lines += [
             "",
@@ -856,7 +951,7 @@ def handle(arguments: argparse.Namespace) -> int:
         if arguments.evaluation == "agreement":
             first_rows = load_labels(arguments.labels, criteria, tests, arguments.meta)
             second_rows = load_labels(
-                arguments.relabels, criteria, tests, arguments.meta
+                arguments.relabels, criteria, tests, arguments.meta, subset=True
             )
             report = evaluate_agreement(first_rows, second_rows)
             arguments.output.mkdir(parents=True, exist_ok=True)
