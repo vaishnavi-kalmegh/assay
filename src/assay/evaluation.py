@@ -575,13 +575,18 @@ def _is_unsure(row: dict[str, str]) -> bool:
 
 
 def evaluate_agreement(
-    first_rows: Sequence[dict[str, str]], second_rows: Sequence[dict[str, str]]
+    first_rows: Sequence[dict[str, str]],
+    second_rows: Sequence[dict[str, str]],
+    *,
+    second_rater: str | None = None,
+    note: str | None = None,
 ) -> dict[str, Any]:
-    """Self-agreement between two labellings of the same pairs by one person.
+    """Agreement between two labellings of the same pairs.
 
     Every pair in the second sheet must be in the first. Only those pairs are
-    compared. This measures how consistent one labeller is with themselves, not
-    agreement between people.
+    compared. By default the second pass is the same person, so this measures
+    self-consistency. If ``second_rater`` names a different rater, the report says
+    so and is not self-agreement; ``note`` is carried into the report as stated.
     """
     first = {(r["requirement_id"], r["case_id"]): r for r in first_rows}
     second = {(r["requirement_id"], r["case_id"]): r for r in second_rows}
@@ -617,6 +622,8 @@ def evaluate_agreement(
         "positives_second": sum(second_labels.values()),
         "unsure_first": sum(_is_unsure(first[pair]) for pair in pairs),
         "unsure_second": sum(_is_unsure(second[pair]) for pair in pairs),
+        "second_rater": second_rater,
+        "note": note,
     }
 
 
@@ -624,8 +631,9 @@ def agreement_markdown(report: dict[str, Any]) -> str:
     """A short human-readable summary of ``evaluate_agreement`` output."""
     n = report["pairs_compared"]
     kappa = report["cohens_kappa"]
+    other = report.get("second_rater")
     lines = [
-        "# Self-agreement",
+        "# Self-agreement" if other is None else "# Agreement with a second rater",
         "",
         f"Pairs compared: {n} of {report['first_sheet_pairs']} in the first sheet.",
         f"Agreed on {report['agreements']} of {n} "
@@ -641,10 +649,16 @@ def agreement_markdown(report: dict[str, Any]) -> str:
         f"{report['positives_second']} second pass. Rows marked unsure: "
         f"{report['unsure_first']} first pass, {report['unsure_second']} second pass.",
         "",
-        "This is one person's consistency with themselves, not agreement between "
-        f"people. With {n} pairs, one changed label moves observed agreement by "
+        (
+            "This is one person's consistency with themselves, not agreement "
+            "between people."
+            if other is None
+            else f"The second rater is {other}, a different rater from the first "
+            "labeller, so this is not self-consistency and does not replace it."
+        )
+        + f" With {n} pairs, one changed label moves observed agreement by "
         f"{100 / n:.1f} points, and kappa is unstable when most labels are the same.",
-        "",
+        *([f"Note: {report['note']}", ""] if report.get("note") else [""]),
         "## Disagreements",
         "",
     ]
@@ -910,6 +924,14 @@ def register_commands(commands: Any) -> None:
         "--meta", type=Path, default=Path("data/labelled_pairs.meta.json")
     )
     agreement.add_argument("--output", type=Path, default=Path("reports/evaluation"))
+    agreement.add_argument(
+        "--second-rater",
+        default=None,
+        help="name of a different second rater; omit for a self-agreement pass",
+    )
+    agreement.add_argument(
+        "--note", default=None, help="free text carried into the report as stated"
+    )
 
 
 def handle(arguments: argparse.Namespace) -> int:
@@ -953,7 +975,12 @@ def handle(arguments: argparse.Namespace) -> int:
             second_rows = load_labels(
                 arguments.relabels, criteria, tests, arguments.meta, subset=True
             )
-            report = evaluate_agreement(first_rows, second_rows)
+            report = evaluate_agreement(
+                first_rows,
+                second_rows,
+                second_rater=arguments.second_rater,
+                note=arguments.note,
+            )
             arguments.output.mkdir(parents=True, exist_ok=True)
             (arguments.output / "agreement.json").write_text(
                 json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8"

@@ -102,6 +102,35 @@ been saved.
 The first labels stay the ground truth. The second pass measures how stable they
 are; it does not replace them.
 
+## A second rater (an AI model), not a self-agreement pass
+
+At your request, Claude (an AI model) labelled the same 20 pairs as
+`data/relabelled_pairs.csv` and saved them to `data/relabelled_pairs_claude.csv`.
+Your own blank sheet `data/relabelled_pairs.csv` is untouched; your self-agreement
+pass is still open and this does not replace it. Run it with
+`assay evaluate agreement --relabels data/relabelled_pairs_claude.csv --second-rater "Claude (an AI model)"`;
+without `--second-rater` the report calls itself self-agreement, which it is not.
+
+How it was done: from the sheet text and the question above only, before opening your
+first labels. It is **not blind to the mapper**: Claude helped write the mapper's
+rules and had seen the mapper's output and the evaluation result, which may have
+shaped its reading.
+
+Result: agreed on 19 of 20 pairs (observed agreement 0.950, Cohen's kappa 0.773;
+positives 2 from you, 3 from Claude). With 20 pairs one label moves agreement by
+5 points and kappa is unstable.
+
+The one disagreement is `REQ-008|BASE-D9059F5116BA` (development half): the criterion
+"Product category accepts a supported enum value" against the test
+`POST /products` "valid input". You labelled it 0, Claude 1 (marked unsure): the valid
+input posts one supported category, so a broken API that rejected supported
+categories would fail it, but it does not cover every value. It shows where the
+protocol is ambiguous: whether a generic valid-input test verifies an "accepts a
+supported value" criterion. **Your label stays the ground truth.** For scale only: had
+that label been 1, the mapper would have missed it, and the development half would
+read 1 of 2 positives found instead of 1 of 1; the sweep would still not run (fewer
+than 5 development positives). No label was changed.
+
 ## What the labels can and cannot show
 
 - **One labeller.** There is no second opinion. A single person's reading of
