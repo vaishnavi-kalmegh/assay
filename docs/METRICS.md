@@ -171,6 +171,26 @@ tags; that is M6, with the comparison defined in `PLAN.md` (open decision 9).
 The result is pinned in `tests/test_evaluation.py` as a characterisation of
 today's tests.
 
+## Suite comparison (M6)
+
+`assay compare` measures three suites with the same definitions: **A** the schema
+baseline, **B** the criteria-driven acceptance suite, **C** both together.
+
+- Requirement coverage of a suite = share of all criteria with at least one
+  passing test of that suite tagged to them, on the real API. A's tags come from
+  the mapper at the frozen threshold; B's tests are tagged by construction.
+- Mutation score of a suite = mutants killed / mutants executed over the same 10
+  mutants. A passing control run is required first and only `failed` tests kill.
+- C is the union of A and B. Every test builds its own fresh app, so the union
+  equals one combined run; this was checked once by running both suites in one
+  pytest session on the control and all 10 mutants (identical killed set).
+- The two measures are never merged, and coverage is not comparable across suites.
+
+Measured result: A covers 13 of 18 and kills 6 of 10; B covers 18 of 18 and kills
+7 of 10; C covers 18 of 18 and kills 9 of 10. `category_accepts_toy` survives all
+three. Limits: 10 hand-written mutants on one demo API, no mutant declared
+equivalent, coverage of B and C partly circular. Output: `reports/comparison/`.
+
 ## Commands
 
 ```
@@ -180,6 +200,7 @@ assay evaluate relabel             # blank subset of the pairs, to label again l
 assay evaluate agreement           # compare the two passes (agreement, kappa)
 assay evaluate mutants             # control run, then every mutant
 assay evaluate mutants --mutant price_allows_zero   # a chosen subset
+assay compare                      # suites A, B and C: coverage and mutation score
 ```
 
 Reports go to `reports/evaluation/` and `reports/mutation/` (ignored by Git).

@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import pprint
 import re
 import subprocess
@@ -254,12 +255,15 @@ def export_acceptance_tests(
     _write(
         output_dir / "conftest.py",
         '"""Fixtures for generated acceptance tests."""\n\n'
+        "import os\n\n"
         "import pytest\n"
         "from fastapi.testclient import TestClient\n\n"
         "from assay.demo_api import create_app\n\n\n"
         "@pytest.fixture\n"
         "def client():\n"
-        "    with TestClient(create_app(seeded=False)) as test_client:\n"
+        "    mutant = os.environ.get(\"ASSAY_MUTANT\") or None\n"
+        "    app = create_app(seeded=False, mutant=mutant)\n"
+        "    with TestClient(app) as test_client:\n"
         "        yield test_client\n",
     )
     _write(output_dir / "pytest.ini", _PYTEST_INI)
@@ -284,15 +288,25 @@ def export_acceptance_tests(
     return manifest
 
 
-def run_acceptance(
-    spec_path: Path,
-    criteria_path: Path,
+def run_exported_acceptance(
     output_dir: Path,
+    manifest: list[dict[str, Any]],
     results_path: Path,
+    mutant: str | None = None,
 ) -> dict[str, Any]:
-    """Generate and execute acceptance tests, then write deterministic JSON results."""
-    manifest = export_acceptance_tests(spec_path, criteria_path, output_dir)
-    junit_path = Path(output_dir) / "junit.xml"
+    """Run an already exported acceptance suite and write sorted JSON results.
+
+    ``mutant`` names a demo API mutant (None is the real API). The environment
+    variable is always cleared first so a stray value in the caller's shell can
+    never turn a mutant on silently.
+    """
+    output_dir = Path(output_dir)
+    junit_path = output_dir / "junit.xml"
+    junit_path.unlink(missing_ok=True)
+    environment = {**os.environ, "PYTHONDONTWRITEBYTECODE": "1"}
+    environment.pop("ASSAY_MUTANT", None)
+    if mutant is not None:
+        environment["ASSAY_MUTANT"] = mutant
     completed = subprocess.run(
         [
             sys.executable,
@@ -306,6 +320,7 @@ def run_acceptance(
         text=True,
         check=False,
         timeout=600,
+        env=environment,
     )
     if not junit_path.exists():
         raise RuntimeError(
@@ -345,6 +360,17 @@ def run_acceptance(
     results_path.parent.mkdir(parents=True, exist_ok=True)
     _write(results_path, json.dumps(report, indent=2, sort_keys=True))
     return report
+
+
+def run_acceptance(
+    spec_path: Path,
+    criteria_path: Path,
+    output_dir: Path,
+    results_path: Path,
+) -> dict[str, Any]:
+    """Generate and execute acceptance tests, then write deterministic JSON results."""
+    manifest = export_acceptance_tests(spec_path, criteria_path, output_dir)
+    return run_exported_acceptance(output_dir, manifest, results_path)
 
 
 def register_commands(commands: Any) -> None:

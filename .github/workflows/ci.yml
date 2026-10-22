@@ -31,6 +31,8 @@ jobs:
         run: pytest
       - name: Generate and test acceptance suite
         run: assay acceptance
+      - name: Compare baseline, criteria-driven and combined suites
+        run: assay compare
       - name: Lint
         run: |
           ruff check .
