@@ -12,3 +12,4 @@ venv/
 reports/
 generated_tests/
 generated_acceptance/
+generated_comparison/
