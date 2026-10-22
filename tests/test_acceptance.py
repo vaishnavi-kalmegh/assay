@@ -108,3 +108,31 @@ def test_generated_files_pass_the_projects_own_lint_rules(tmp_path: Path) -> Non
     )
 
     assert completed.returncode == 0, completed.stdout + completed.stderr
+
+
+def test_a_stray_mutant_variable_never_reaches_the_control_run(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("ASSAY_MUTANT", "name_min_length_2")
+
+    report = run_acceptance(
+        SPEC, CRITERIA, tmp_path / "generated", tmp_path / "results.json"
+    )
+
+    assert report["summary"] == {"total": 18, "passed": 18}
+
+
+def test_the_acceptance_suite_can_run_against_a_named_mutant(tmp_path: Path) -> None:
+    from assay.acceptance import run_exported_acceptance
+
+    output = tmp_path / "generated"
+    manifest = export_acceptance_tests(SPEC, CRITERIA, output)
+
+    report = run_exported_acceptance(
+        output, manifest, tmp_path / "mutant.json", mutant="name_min_length_2"
+    )
+
+    failed = [
+        r["requirement_id"] for r in report["results"] if r["outcome"] == "failed"
+    ]
+    assert failed == ["REQ-004"]
