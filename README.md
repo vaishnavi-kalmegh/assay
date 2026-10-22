@@ -23,7 +23,7 @@ Read these numbers with their limits:
 - **Coverage is not comparable across suites.** A's tags come from the mapper, so it inherits the mapper's errors. B and C are generated from the criteria being counted, so their coverage is partly circular. It is a traceability measure, not proof of test quality.
 - **Mutation score is the more independent check, and it is small.** 10 mutants, hand-written inside this project, not by an independent party, for this one API; some target behaviour the criteria describe. One mutant moves the score by 0.1. No mutant was declared equivalent.
 - **What each suite misses.** A never asserts a response body and has no unknown-ID tests, so it misses `get_unknown_product_200`, `order_unknown_product_201` and `health_body_wrong`. B misses boundary mutants A catches. Nothing catches `category_accepts_toy`, so no test sends the valid value `toy`.
-- **Mapper quality** was scored against 40 hand-labelled pairs (5 positives, one labeller). At the default threshold 0.4 it found 1 of 1 positives in the development half and 4 of 4 in the test half, with no false positives. That is a count, not a quality claim: the rules were revised after the labelled errors were seen, so the test half is not an independent holdout. The threshold 0.4 is a frozen default, not a tuned value, because the development half has too few positives for a sweep to choose one. A second labelling pass, which measures self-consistency, is still pending.
+- **Mapper quality** was scored against 40 hand-labelled pairs (5 positives, one labeller). At the default threshold 0.4 it found 1 of 1 positives in the development half and 4 of 4 in the test half, with no false positives. That is a count, not a quality claim: the rules were revised after the labelled errors were seen, so the test half is not an independent holdout. The threshold 0.4 is a frozen default, not a tuned value, because the development half has too few positives for a sweep to choose one. A second rater (an AI model, not blind to the mapper) agreed with the labels on 19 of 20 re-labelled pairs (kappa 0.773); your own self-agreement pass, which measures one person's consistency, is still pending.
 
 Full definitions are in `docs/METRICS.md`, the labelling protocol in `docs/LABELLING.md`.
 
@@ -87,7 +87,7 @@ Output is deterministic: running a command twice gives identical files. CI (Ubun
 |---|---|
 | M0 Skeleton, M1 Demo API, M2 Offline schema baseline | done |
 | M3 Exporter and runner, M4 Requirement mapping | done |
-| M5 Evaluation harness | done; the second labelling pass (self-agreement) is pending and belongs to the labeller |
+| M5 Evaluation harness | done; a second-rater pass is recorded, the labeller's own self-agreement pass is pending |
 | M6 Comparison and docs | done |
 
 ## Known limitations
