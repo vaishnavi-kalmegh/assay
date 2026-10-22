@@ -114,6 +114,7 @@ Mapping precision/recall apply only to the mapper on labelled pairs, not the sch
 - Nondeterminism: sort inputs/outputs, fix seeds, avoid timestamps in golden artifacts, test repeatability.
 - Dependency drift: exact pins and CI.
 - Scope creep: enforce out-of-scope list below.
+- Dependencies: direct dependencies are pinned in pyproject.toml but transitive ones are resolved by pip, so there is no full lock file; a future clean install could resolve different transitive versions. Known limitation, not a current CI failure.
 
 ## Out of scope
 
@@ -129,4 +130,8 @@ Dashboard/web UI, multi-agent systems, GraphQL, multiple or real LLM providers, 
 6. Passing tests: a requirement is covered only if at least one passing test is tagged to it; report mapped-but-failing tests separately.
 7. Mutation denominator: use valid, non-equivalent mutants selected for the run. Setup errors do not count as kills.
 8. CI: run tests without external services; write generated artifacts to temporary or ignored directories.
-9. Targeted-test generator (unscheduled): the "full pipeline" in open decision 2 adds tests for criteria the baseline does not cover, but no milestone builds that generator, and M6 compares baseline against it. The criteria the baseline cannot cover today are REQ-002, REQ-011 (response body content) and REQ-012, REQ-018 (404 for an unknown ID). Proposed default: add a milestone between M5 and M6 that generates tests only from structured criteria fields, never from guessed behavior. Needs a decision before M6.
+9. Criteria-driven suite and the M6 comparison (settled default). The generator exists: `assay acceptance` (src/assay/acceptance.py) writes one explicit pytest test per structured criterion, from the criteria fields only, never from guessed behavior, and runs them. It is a separate command: it is not yet connected to the mapper, the requirement tags or the mutant runner. "Full pipeline" in decision 2 means suite C below. M6 compares three suites, each scored with the same definitions:
+   - A. Baseline: schema-derived tests from the OpenAPI document only (43 tests).
+   - B. Criteria-driven: the acceptance suite alone (18 tests, one per criterion).
+   - C. Combined: A and B run together as one suite, every test tagged with the requirement IDs it covers.
+   Requirement coverage for a suite = share of all criteria in criteria.yaml with at least one passing test of that suite tagged to them. For A the tags come from the mapper at the frozen threshold, so coverage inherits the mapper's errors. For B and C the acceptance tests are tagged by construction because they were generated from the criteria, so their coverage is partly circular (see the evaluation caveat) and is a traceability measure only. Mutation score for each suite = killed / executed over the same 10 mutants, a passing control run required, only `failed` tests counting as kills, reported separately from coverage and never combined with it. Do not compare coverage of A with coverage of B or C as if it measured the same thing.

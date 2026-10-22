@@ -165,7 +165,9 @@ asserts the status code only, never a response body; it has no test that fetches
 or orders an unknown product; and its invalid-enum test sends
 `__invalid_enum_value__`, not `toy`. This is the gap the criteria-driven
 generator is meant to close. It is a measurement of the baseline, not a
-comparison: the full pipeline does not exist yet (`PLAN.md`, open decision 9).
+comparison. The criteria-driven generator now exists (`assay acceptance`), but it
+has not yet been run against the mutants or joined to the mapper and requirement
+tags; that is M6, with the comparison defined in `PLAN.md` (open decision 9).
 The result is pinned in `tests/test_evaluation.py` as a characterisation of
 today's tests.
 

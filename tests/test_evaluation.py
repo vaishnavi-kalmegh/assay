@@ -1094,3 +1094,154 @@ def test_enough_dev_positives_lets_the_sweep_choose(
     assert report["dev_chosen_threshold"] is not None
     assert "dev_chosen_threshold_scores" in report
     assert "Dev-chosen threshold:" in evaluation.mapping_markdown(report)
+
+
+def test_enough_positives_but_no_defined_f1_is_not_reported_as_tuned(
+    tmp_path, tests_and_criteria
+):
+    """Attempting the sweep is not the same as selecting a threshold."""
+    tests, criteria = tests_and_criteria
+    sheet, meta, _ = _filled_sheet(tmp_path, tests, criteria, lambda r: "0")
+    rows = evaluation.load_labels(sheet, criteria, tests, meta)
+    ever_predicted = evaluation._predicted_pairs(
+        map_requirements(criteria, tests, threshold=0.0, top_k=1000)
+    )
+    unpredictable_dev = [
+        {**row, "label": "1"}
+        for row in rows
+        if row["split"] == "dev"
+        and (row["requirement_id"], row["case_id"]) not in ever_predicted
+    ]
+    assert len(unpredictable_dev) >= evaluation.MIN_DEV_POSITIVES  # precondition
+    test_rows = [row for row in rows if row["split"] == "test"]
+
+    report = evaluation.evaluate_mapping(
+        unpredictable_dev + test_rows, criteria, tests, threshold=0.4, top_k=3
+    )
+
+    assert all(entry["f1"] is None for entry in report["dev_sweep"])
+    tuning = report["threshold_tuning"]
+    assert tuning["attempted"] is True
+    assert tuning["tuned"] is False
+    assert tuning["reason"] == "no_defined_f1"
+    assert tuning["kept_threshold"] == 0.4
+    assert report["dev_chosen_threshold"] is None
+    markdown = evaluation.mapping_markdown(report)
+    assert "F1 is undefined everywhere" in markdown
+    assert "Dev-chosen threshold:" not in markdown
+
+
+# --- the loader enforces the frozen sheet at runtime -------------------------------
+
+
+def _frozen_sheet(tmp_path, tests_and_criteria):
+    tests, criteria = tests_and_criteria
+    sheet, meta, _ = _filled_sheet(tmp_path, tests, criteria, lambda r: "0")
+    return tests, criteria, sheet, meta
+
+
+def test_moving_a_pair_between_halves_is_rejected_by_the_loader(
+    tmp_path, tests_and_criteria
+):
+    tests, criteria, sheet, meta = _frozen_sheet(tmp_path, tests_and_criteria)
+
+    def move_one(rows):
+        rows[0]["split"] = "test" if rows[0]["split"] == "dev" else "dev"
+
+    _rewrite(sheet, move_one)
+    with pytest.raises(evaluation.EvaluationError, match="dev/test split"):
+        evaluation.load_labels(sheet, criteria, tests, meta)
+
+
+def test_swapping_two_pairs_between_halves_keeps_counts_but_is_still_rejected(
+    tmp_path, tests_and_criteria
+):
+    tests, criteria, sheet, meta = _frozen_sheet(tmp_path, tests_and_criteria)
+
+    def swap(rows):
+        dev = next(r for r in rows if r["split"] == "dev")
+        test = next(r for r in rows if r["split"] == "test")
+        dev["split"], test["split"] = "test", "dev"
+
+    _rewrite(sheet, swap)
+    with pytest.raises(evaluation.EvaluationError, match="dev/test split"):
+        evaluation.load_labels(sheet, criteria, tests, meta)
+
+
+def test_editing_a_descriptive_column_is_rejected_by_the_loader(
+    tmp_path, tests_and_criteria
+):
+    tests, criteria, sheet, meta = _frozen_sheet(tmp_path, tests_and_criteria)
+    _rewrite(sheet, lambda rows: rows[3].update(test_name=rows[3]["test_name"] + "!"))
+    with pytest.raises(evaluation.EvaluationError, match="frozen column"):
+        evaluation.load_labels(sheet, criteria, tests, meta)
+
+
+def test_dropping_a_pair_is_rejected_unless_the_sheet_is_a_declared_subset(
+    tmp_path, tests_and_criteria
+):
+    tests, criteria, sheet, meta = _frozen_sheet(tmp_path, tests_and_criteria)
+    _rewrite(sheet, lambda rows: rows.pop())
+    with pytest.raises(evaluation.EvaluationError, match="differ from the frozen set"):
+        evaluation.load_labels(sheet, criteria, tests, meta)
+    kept = evaluation.load_labels(sheet, criteria, tests, meta, subset=True)
+    assert len(kept) == 39
+
+
+def test_a_subset_may_not_smuggle_in_a_changed_split(tmp_path, tests_and_criteria):
+    tests, criteria, sheet, meta = _frozen_sheet(tmp_path, tests_and_criteria)
+
+    def flip(rows):
+        rows[0]["split"] = "test" if rows[0]["split"] == "dev" else "dev"
+
+    _rewrite(sheet, flip)
+    with pytest.raises(evaluation.EvaluationError, match="dev/test split"):
+        evaluation.load_labels(sheet, criteria, tests, meta, subset=True)
+
+
+def test_missing_metadata_is_an_error_when_a_path_is_given(
+    tmp_path, tests_and_criteria
+):
+    tests, criteria, sheet, meta = _frozen_sheet(tmp_path, tests_and_criteria)
+    meta.unlink()
+    with pytest.raises(evaluation.EvaluationError, match="is missing"):
+        evaluation.load_labels(sheet, criteria, tests, meta)
+
+
+def test_metadata_without_pair_fingerprints_is_rejected(tmp_path, tests_and_criteria):
+    tests, criteria, sheet, meta = _frozen_sheet(tmp_path, tests_and_criteria)
+    data = json.loads(meta.read_text())
+    del data["pair_fingerprints"]
+    meta.write_text(json.dumps(data))
+    with pytest.raises(evaluation.EvaluationError, match="pair_fingerprints"):
+        evaluation.load_labels(sheet, criteria, tests, meta)
+
+
+def test_metadata_counts_must_match_the_sheet(tmp_path, tests_and_criteria):
+    tests, criteria, sheet, meta = _frozen_sheet(tmp_path, tests_and_criteria)
+    data = json.loads(meta.read_text())
+    data["splits"] = {"dev": 19, "test": 21}
+    meta.write_text(json.dumps(data))
+    with pytest.raises(evaluation.EvaluationError, match="split counts"):
+        evaluation.load_labels(sheet, criteria, tests, meta)
+
+
+def test_labels_and_notes_may_change_without_breaking_the_freeze(
+    tmp_path, tests_and_criteria
+):
+    tests, criteria, sheet, meta = _frozen_sheet(tmp_path, tests_and_criteria)
+    _rewrite(sheet, lambda rows: rows[0].update(label="1", notes="unsure"))
+    loaded = evaluation.load_labels(sheet, criteria, tests, meta)
+    assert loaded[0]["label"] == "1"
+
+
+def test_the_committed_sheet_loads_against_the_committed_metadata(tests_and_criteria):
+    tests, criteria = tests_and_criteria
+    root = Path(__file__).resolve().parent.parent
+    rows = evaluation.load_labels(
+        root / "data" / "labelled_pairs.csv",
+        criteria,
+        tests,
+        root / "data" / "labelled_pairs.meta.json",
+    )
+    assert len(rows) == 40

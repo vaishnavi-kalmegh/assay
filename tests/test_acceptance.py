@@ -89,3 +89,22 @@ def test_export_rejects_duplicate_requirement_ids(tmp_path: Path) -> None:
 
     with pytest.raises(MappingError, match="duplicate requirement ID"):
         export_acceptance_tests(SPEC, criteria, tmp_path / "generated")
+
+
+def test_generated_files_pass_the_projects_own_lint_rules(tmp_path: Path) -> None:
+    """Generated code is committed-quality: it must satisfy the repo's ruff config."""
+    import subprocess
+    import sys
+
+    output = tmp_path / "generated"
+    export_acceptance_tests(SPEC, CRITERIA, output)
+    config = Path(__file__).resolve().parent.parent / "pyproject.toml"
+
+    completed = subprocess.run(
+        [sys.executable, "-m", "ruff", "check", "--config", str(config), str(output)],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert completed.returncode == 0, completed.stdout + completed.stderr
