@@ -1245,3 +1245,44 @@ def test_the_committed_sheet_loads_against_the_committed_metadata(tests_and_crit
         root / "data" / "labelled_pairs.meta.json",
     )
     assert len(rows) == 40
+
+
+def test_a_report_without_a_named_rater_is_a_self_agreement_report(
+    tmp_path, tests_and_criteria
+):
+    tests, criteria = tests_and_criteria
+    base, _, _ = _first_rows(tests, criteria, tmp_path)
+    rows = base[:4]
+    report = evaluation.evaluate_agreement(
+        _labelled(rows, ["1", "0", "0", "0"]), _labelled(rows, ["1", "0", "0", "0"])
+    )
+
+    text = evaluation.agreement_markdown(report)
+
+    assert report["second_rater"] is None
+    assert text.startswith("# Self-agreement")
+    assert "one person's consistency with themselves" in text
+
+
+def test_a_named_second_rater_is_not_presented_as_self_agreement(
+    tmp_path, tests_and_criteria
+):
+    tests, criteria = tests_and_criteria
+    base, _, _ = _first_rows(tests, criteria, tmp_path)
+    rows = base[:4]
+
+    report = evaluation.evaluate_agreement(
+        _labelled(rows, ["1", "0", "0", "0"]),
+        _labelled(rows, ["1", "1", "0", "0"]),
+        second_rater="an AI model",
+        note="not blind to the mapper",
+    )
+    text = evaluation.agreement_markdown(report)
+
+    assert report["second_rater"] == "an AI model"
+    assert text.startswith("# Agreement with a second rater")
+    assert "The second rater is an AI model" in text
+    assert "not self-consistency" in text
+    assert "consistency with themselves" not in text
+    assert "Note: not blind to the mapper" in text
+    assert report["agreements"] == 3
