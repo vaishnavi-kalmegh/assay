@@ -131,6 +131,36 @@ that label been 1, the mapper would have missed it, and the development half wou
 read 1 of 2 positives found instead of 1 of 1; the sweep would still not run (fewer
 than 5 development positives). No label was changed.
 
+## A third rater (ChatGPT 6), blind
+
+The user gave the same 20 pairs to ChatGPT 6 using a blind packet (the protocol, the
+requirement and test text, no labels, no split, nothing about the mapper). The model
+name and what it was shown are as the user reported them; the project did not
+verify either. Its raw answer is saved unedited in
+`data/relabelled_pairs_chatgpt-6.csv`; run
+`assay evaluate agreement --relabels data/relabelled_pairs_chatgpt-6.csv --second-rater "ChatGPT 6 (model name as given by the user)"`.
+Unlike Claude it had not seen the mapper, so it is the closer to a blind reading.
+
+Result against the first labels: agreed on 19 of 20 (observed agreement 0.950, kappa
+0.773; positives 2 first pass, 3 from ChatGPT 6). Against Claude's labels it agreed
+on 18 of 20.
+
+Where the raters differ:
+
+| Pair | First labeller | Claude | ChatGPT 6 |
+|---|---|---|---|
+| `REQ-008\|BASE-D9059F5116BA` (category accepts a supported value, "valid input") | 0 | 1 (unsure) | 0 |
+| `REQ-005\|BASE-24F2A691793C` (name over 40 chars rejected, missing required name) | 0 | 0 | 1 |
+
+On the first, two of three raters agree with the first labeller. On the second,
+ChatGPT 6 labelled 1 with a note that it holds "if name validation is enforced";
+by the protocol a test for a missing name would still pass if over-long names were
+accepted, so the first labeller's 0 stands. No label was changed. Three raters
+agreeing on 18 of 20 pairs is some evidence the first labels are stable, from a
+small sample and from raters that are not independent humans, so it does not make
+the labels validated and does not replace the first labeller's own
+self-agreement pass.
+
 ## What the labels can and cannot show
 
 - **One labeller.** There is no second opinion. A single person's reading of
