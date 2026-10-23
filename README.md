@@ -15,14 +15,14 @@ It is a learning-focused portfolio project for AI/ML engineering and QA automati
 | Suite | Tests | Criteria with a passing tagged test | Mutants killed |
 |---|---|---|---|
 | A. Baseline (generated from the OpenAPI spec only) | 43 | 13 of 18 | 6 of 10 |
-| B. Criteria-driven (one test per criterion) | 18 | 18 of 18 | 7 of 10 |
-| C. Combined (A and B) | 61 | 18 of 18 | 9 of 10 |
+| B. Criteria-driven (one test per criterion) | 18 | 18 of 18 | 8 of 10 (7 before the `toy` change below) |
+| C. Combined (A and B) | 61 | 18 of 18 | 10 of 10 (9 before the `toy` change below) |
 
 Read these numbers with their limits:
 
 - **Coverage is not comparable across suites.** A's tags come from the mapper, so it inherits the mapper's errors. B and C are generated from the criteria being counted, so their coverage is partly circular. It is a traceability measure, not proof of test quality.
 - **Mutation score is the more independent check, and it is small.** 10 mutants, hand-written inside this project, not by an independent party, for this one API; some target behaviour the criteria describe. One mutant moves the score by 0.1. No mutant was declared equivalent.
-- **What each suite misses.** A never asserts a response body and has no unknown-ID tests, so it misses `get_unknown_product_200`, `order_unknown_product_201` and `health_body_wrong`. B misses boundary mutants A catches. Nothing catches `category_accepts_toy`, so no test sends the valid value `toy`.
+- **What each suite misses.** A never asserts a response body and has no unknown-ID tests, so it misses `get_unknown_product_200`, `order_unknown_product_201` and `health_body_wrong`. B misses boundary mutants A catches. No suite caught `category_accepts_toy` at first (A 6, B 7, C 9 of 10), because no test sent the value `toy`. REQ-009's generated test was then extended to try several unsupported values, including `toy`, which is what made B and C kill it. **That was done after the mutant survived, so the kill is tuned to the mutant, not an independent result.** The independent measurement is the earlier one: B 7 of 10 and C 9 of 10. Treat 10 of 10 as "no known survivors", not as proof the tests are thorough.
 - **Mapper quality** was scored against 40 hand-labelled pairs (5 positives, one labeller). At the default threshold 0.4 it found 1 of 1 positives in the development half and 4 of 4 in the test half, with no false positives. That is a count, not a quality claim: the rules were revised after the labelled errors were seen, so the test half is not an independent holdout. The threshold 0.4 is a frozen default, not a tuned value, because the development half has too few positives for a sweep to choose one. Two AI second raters each agreed with the labels on 19 of 20 re-labelled pairs (kappa 0.773 each; Claude was not blind to the mapper, ChatGPT 6 was given a blind packet, as reported by the user); your own self-agreement pass, which measures one person's consistency, is still pending.
 
 Full definitions are in `docs/METRICS.md`, the labelling protocol in `docs/LABELLING.md`.

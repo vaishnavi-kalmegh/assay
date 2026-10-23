@@ -308,6 +308,11 @@ def comparison_markdown(report: dict[str, Any]) -> str:
         "not by an independent party, for this one demo API, and some target "
         "behaviours the criteria describe, so "
         "B's kills partly reflect that the same hands wrote both. " + step,
+        "- **One kill is tuned to its mutant.** REQ-009's generated test tries "
+        "`toy` among its unsupported values because `category_accepts_toy` "
+        "survived without it, so B's and C's kill of that mutant is not "
+        "independent. Counting it, B and C score one higher than the independent "
+        "figures.",
         "- **No equivalent mutants were declared.** A survivor may be a real gap or "
         "a mutant no test could distinguish; each survivor should be read, not "
         "counted blindly.",
