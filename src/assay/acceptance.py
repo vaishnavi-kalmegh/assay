@@ -103,6 +103,19 @@ def _product_setup() -> list[str]:
     ]
 
 
+# Values a rejected-enum criterion tries besides the placeholder: a plausible
+# category that is not offered, a wrong-case spelling of a real one, and an empty
+# string. `toy` was added after the `category_accepts_toy` mutant survived, so a
+# kill of that mutant is not an independent result (docs/METRICS.md).
+_UNSUPPORTED_CATEGORIES = ("__unsupported__", "toy", "Book", "")
+
+
+def _rejected_categories(criterion: Criterion) -> list[str]:
+    """Unsupported values to try, never one the criterion lists as supported."""
+    supported = {str(item) for item in criterion.value}
+    return [item for item in _UNSUPPORTED_CATEGORIES if item not in supported]
+
+
 def _quantity_value(criterion: Criterion) -> Any:
     """Choose a quantity that exercises the criterion's expected boundary."""
     value = criterion.value
@@ -173,6 +186,19 @@ def _render_test(criterion: Criterion) -> str:
                 "    response = client.post("
                 f'"/orders", json={{"product_id": {criterion.value!r}, "quantity": 1}})'
             )
+    elif (
+        criterion.field == "request.category"
+        and criterion.constraint == "enum"
+        and status >= 400
+    ):
+        lines += [
+            f"    for category in {_rejected_categories(criterion)!r}:",
+            f"        response = client.{method.lower()}(",
+            f"            {path!r}, json={{**_VALID_PRODUCT, \"category\": category}}",
+            "        )",
+            f"        assert response.status_code == {status}, category",
+        ]
+        return "\n".join(lines)
     elif method == "PATCH":
         lines += _product_setup()
         quantity = _quantity_value(criterion)
