@@ -136,3 +136,45 @@ def test_the_acceptance_suite_can_run_against_a_named_mutant(tmp_path: Path) -> 
         r["requirement_id"] for r in report["results"] if r["outcome"] == "failed"
     ]
     assert failed == ["REQ-004"]
+
+
+def test_the_rejected_enum_test_catches_a_category_that_accepts_toy(
+    tmp_path: Path,
+) -> None:
+    from assay.acceptance import run_exported_acceptance
+
+    output = tmp_path / "generated"
+    manifest = export_acceptance_tests(SPEC, CRITERIA, output)
+
+    report = run_exported_acceptance(
+        output, manifest, tmp_path / "toy.json", mutant="category_accepts_toy"
+    )
+
+    failed = [
+        r["requirement_id"] for r in report["results"] if r["outcome"] == "failed"
+    ]
+    assert failed == ["REQ-009"]
+
+
+def test_a_value_the_criterion_lists_as_supported_is_never_expected_rejected() -> None:
+    from assay.acceptance import _rejected_categories
+    from assay.mapping import Criterion
+
+    criterion = Criterion.model_validate(
+        {
+            "id": "REQ-099",
+            "method": "POST",
+            "path": "/products",
+            "field": "request.category",
+            "constraint": "enum",
+            "value": ["book", "toy"],
+            "expected_status": 422,
+            "description": "Unsupported product category is rejected.",
+        }
+    )
+
+    tried = _rejected_categories(criterion)
+
+    assert "toy" not in tried
+    assert "book" not in tried
+    assert "__unsupported__" in tried
