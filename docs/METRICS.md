@@ -187,8 +187,11 @@ baseline, **B** the criteria-driven acceptance suite, **C** both together.
 - The two measures are never merged, and coverage is not comparable across suites.
 
 Measured result: A covers 13 of 18 and kills 6 of 10; B covers 18 of 18 and kills
-7 of 10; C covers 18 of 18 and kills 9 of 10. `category_accepts_toy` survives all
-three. Limits: 10 hand-written mutants on one demo API, no mutant declared
+8 of 10; C covers 18 of 18 and kills 10 of 10. `category_accepts_toy` survived all
+three suites (B 7, C 9) until REQ-009's test was extended to try several unsupported
+values including `toy`. That was done after the mutant survived, so the kill is tuned
+to the mutant and is not independent: the independent figures are B 7 of 10 and C 9
+of 10. Limits: 10 hand-written mutants on one demo API, no mutant declared
 equivalent, coverage of B and C partly circular. Output: `reports/comparison/`.
 
 ## Commands
