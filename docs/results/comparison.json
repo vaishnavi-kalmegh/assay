@@ -1,0 +1,223 @@
+{
+  "configured": {
+    "threshold": 0.4,
+    "top_k": 3
+  },
+  "mutants": [
+    {
+      "description": "product category also accepts the value 'toy'",
+      "killed_by": {
+        "baseline": false,
+        "combined": true,
+        "criteria": true
+      },
+      "mutant": "category_accepts_toy"
+    },
+    {
+      "description": "GET of an unknown product returns 200, not 404",
+      "killed_by": {
+        "baseline": false,
+        "combined": true,
+        "criteria": true
+      },
+      "mutant": "get_unknown_product_200"
+    },
+    {
+      "description": "GET /health returns status 'up' instead of 'ok'",
+      "killed_by": {
+        "baseline": false,
+        "combined": true,
+        "criteria": true
+      },
+      "mutant": "health_body_wrong"
+    },
+    {
+      "description": "product name maximum length relaxed from 40 to 41",
+      "killed_by": {
+        "baseline": true,
+        "combined": true,
+        "criteria": true
+      },
+      "mutant": "name_max_length_41"
+    },
+    {
+      "description": "product name minimum length relaxed from 3 to 2",
+      "killed_by": {
+        "baseline": true,
+        "combined": true,
+        "criteria": true
+      },
+      "mutant": "name_min_length_2"
+    },
+    {
+      "description": "order quantity maximum relaxed from 10 to 11",
+      "killed_by": {
+        "baseline": true,
+        "combined": true,
+        "criteria": false
+      },
+      "mutant": "order_quantity_max_11"
+    },
+    {
+      "description": "an order for an unknown product is accepted",
+      "killed_by": {
+        "baseline": false,
+        "combined": true,
+        "criteria": true
+      },
+      "mutant": "order_unknown_product_201"
+    },
+    {
+      "description": "product price may be zero (gt=0 becomes ge=0)",
+      "killed_by": {
+        "baseline": true,
+        "combined": true,
+        "criteria": true
+      },
+      "mutant": "price_allows_zero"
+    },
+    {
+      "description": "product price 10000 is rejected (le=10000 becomes lt)",
+      "killed_by": {
+        "baseline": true,
+        "combined": true,
+        "criteria": false
+      },
+      "mutant": "price_max_exclusive"
+    },
+    {
+      "description": "stock quantity may be -1 (ge=0 becomes ge=-1)",
+      "killed_by": {
+        "baseline": true,
+        "combined": true,
+        "criteria": true
+      },
+      "mutant": "stock_allows_negative_one"
+    }
+  ],
+  "sample_sizes": {
+    "criteria": 18,
+    "mutants": 10,
+    "tests": {
+      "baseline": 43,
+      "combined": 61,
+      "criteria": 18
+    }
+  },
+  "suites": {
+    "baseline": {
+      "mutation": {
+        "executed": 10,
+        "killed": 6,
+        "mutation_score": 0.6,
+        "survived": [
+          "category_accepts_toy",
+          "get_unknown_product_200",
+          "health_body_wrong",
+          "order_unknown_product_201"
+        ]
+      },
+      "requirement_coverage": {
+        "coverage": 0.7222222222222222,
+        "covered": [
+          "REQ-001",
+          "REQ-003",
+          "REQ-004",
+          "REQ-005",
+          "REQ-006",
+          "REQ-007",
+          "REQ-009",
+          "REQ-010",
+          "REQ-013",
+          "REQ-014",
+          "REQ-015",
+          "REQ-016",
+          "REQ-017"
+        ],
+        "criteria": 18,
+        "mapped_not_passing": [],
+        "not_mapped": [
+          "REQ-002",
+          "REQ-008",
+          "REQ-011",
+          "REQ-012",
+          "REQ-018"
+        ]
+      },
+      "tests": 43
+    },
+    "combined": {
+      "mutation": {
+        "executed": 10,
+        "killed": 10,
+        "mutation_score": 1.0,
+        "survived": []
+      },
+      "requirement_coverage": {
+        "coverage": 1.0,
+        "covered": [
+          "REQ-001",
+          "REQ-002",
+          "REQ-003",
+          "REQ-004",
+          "REQ-005",
+          "REQ-006",
+          "REQ-007",
+          "REQ-008",
+          "REQ-009",
+          "REQ-010",
+          "REQ-011",
+          "REQ-012",
+          "REQ-013",
+          "REQ-014",
+          "REQ-015",
+          "REQ-016",
+          "REQ-017",
+          "REQ-018"
+        ],
+        "criteria": 18,
+        "mapped_not_passing": [],
+        "not_mapped": []
+      },
+      "tests": 61
+    },
+    "criteria": {
+      "mutation": {
+        "executed": 10,
+        "killed": 8,
+        "mutation_score": 0.8,
+        "survived": [
+          "order_quantity_max_11",
+          "price_max_exclusive"
+        ]
+      },
+      "requirement_coverage": {
+        "coverage": 1.0,
+        "covered": [
+          "REQ-001",
+          "REQ-002",
+          "REQ-003",
+          "REQ-004",
+          "REQ-005",
+          "REQ-006",
+          "REQ-007",
+          "REQ-008",
+          "REQ-009",
+          "REQ-010",
+          "REQ-011",
+          "REQ-012",
+          "REQ-013",
+          "REQ-014",
+          "REQ-015",
+          "REQ-016",
+          "REQ-017",
+          "REQ-018"
+        ],
+        "criteria": 18,
+        "mapped_not_passing": [],
+        "not_mapped": []
+      },
+      "tests": 18
+    }
+  }
+}
