@@ -1,5 +1,7 @@
 # assay
 
+[![CI](https://github.com/vaishnavi-kalmegh/assay/actions/workflows/ci.yml/badge.svg)](https://github.com/vaishnavi-kalmegh/assay/actions/workflows/ci.yml)
+
 **Offline-first API test generation and requirement traceability.**
 
 assay answers one question about an API: *do the tests we have actually check the requirements we wrote down?* Given an OpenAPI specification and structured acceptance criteria it generates runnable pytest tests, links each criterion to the tests that could verify it, reports the criteria with no real test, and then measures itself: how well the linking matches hand labels, how many requirements have a passing test, and how many deliberately broken versions of the API the tests catch. Those three measurements are reported separately and never merged into one number.
@@ -7,6 +9,12 @@ assay answers one question about an API: *do the tests we have actually check th
 It is deterministic and fully offline. No API key is needed. An optional LLM mapper exists only as a disabled interface stub.
 
 It is a learning-focused portfolio project for AI/ML engineering and QA automation. Everything below is measured on one small demo API and says nothing about other APIs.
+
+## Demo
+
+![Terminal demo: assay map, the gap reasons, assay acceptance, assay evaluate mutants, assay compare](docs/demo.gif)
+
+The animation is rendered from the real captured output of these commands; only the typing is synthetic (`python scripts/make_demo_gif.py` regenerates it, needs Pillow). The `10 of 10` on the last line includes one kill that was tuned to its mutant; see Results.
 
 ## Results
 
@@ -25,7 +33,7 @@ Read these numbers with their limits:
 - **What each suite misses.** A never asserts a response body and has no unknown-ID tests, so it misses `get_unknown_product_200`, `order_unknown_product_201` and `health_body_wrong`. B misses boundary mutants A catches. No suite caught `category_accepts_toy` at first (A 6, B 7, C 9 of 10), because no test sent the value `toy`. REQ-009's generated test was then extended to try several unsupported values, including `toy`, which is what made B and C kill it. **That was done after the mutant survived, so the kill is tuned to the mutant, not an independent result.** The independent measurement is the earlier one: B 7 of 10 and C 9 of 10. Treat 10 of 10 as "no known survivors", not as proof the tests are thorough.
 - **Mapper quality** was scored against 40 hand-labelled pairs (5 positives, one labeller). At the default threshold 0.4 it found 1 of 1 positives in the development half and 4 of 4 in the test half, with no false positives. That is a count, not a quality claim: the rules were revised after the labelled errors were seen, so the test half is not an independent holdout. The threshold 0.4 is a frozen default, not a tuned value, because the development half has too few positives for a sweep to choose one. Two AI second raters each agreed with the labels on 19 of 20 re-labelled pairs (kappa 0.773 each; Claude was not blind to the mapper, ChatGPT 6 was given a blind packet, as reported by the user); your own self-agreement pass, which measures one person's consistency, is still pending.
 
-Full definitions are in `docs/METRICS.md`, the labelling protocol in `docs/LABELLING.md`.
+The full generated report is committed at `docs/results/comparison.md` (a test fails if it goes stale). Definitions are in `docs/METRICS.md`, the labelling protocol in `docs/LABELLING.md`, and the reasoning behind every design choice, with the questions to expect in an interview, in `docs/DESIGN_DECISIONS.md`.
 
 ## How it works
 
@@ -100,4 +108,4 @@ Output is deterministic: running a command twice gives identical files. CI (Ubun
 
 ## Documentation
 
-`PLAN.md` (roadmap and decisions), `docs/SCHEMA_BASELINE.md`, `docs/RUNNER.md`, `docs/MAPPING.md`, `docs/METRICS.md`, `docs/LABELLING.md`.
+`PLAN.md` (roadmap and decisions), `docs/DESIGN_DECISIONS.md`, `docs/SCHEMA_BASELINE.md`, `docs/RUNNER.md`, `docs/MAPPING.md`, `docs/METRICS.md`, `docs/LABELLING.md`.

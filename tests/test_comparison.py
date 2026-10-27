@@ -274,3 +274,14 @@ def test_a_failing_control_run_rejects_the_whole_comparison(tmp_path, monkeypatc
             SPEC, CRITERIA, tmp_path / "work", tmp_path / "out"
         )
     assert not (tmp_path / "out" / "comparison.json").exists()
+
+
+def test_the_committed_example_results_are_current(real_run):
+    """docs/results is what a reader sees without running anything; keep it true."""
+    _, base = real_run
+    for name in ("comparison.json", "comparison.md"):
+        committed = (ROOT / "docs" / "results" / name).read_bytes()
+        assert committed == (base / "reports" / name).read_bytes(), (
+            f"docs/results/{name} is stale; regenerate with "
+            "`assay compare --output docs/results`"
+        )
