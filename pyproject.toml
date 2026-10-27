@@ -4,10 +4,20 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "assay"
-version = "0.1.0"
+version = "1.0.0"
 description = "Offline-first OpenAPI test generation and requirement traceability"
 readme = "README.md"
 requires-python = ">=3.11"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [{ name = "Vaishnavi Kalmegh" }]
+keywords = ["openapi", "testing", "traceability", "mutation-testing", "pytest"]
+classifiers = [
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Software Development :: Testing",
+]
 dependencies = [
     "fastapi==0.115.12",
     "pydantic==2.11.5",
@@ -18,6 +28,9 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = ["pytest==8.4.2", "ruff==0.14.0"]
+
+[project.urls]
+Repository = "https://github.com/vaishnavi-kalmegh/assay"
 
 [project.scripts]
 assay = "assay.cli:main"
