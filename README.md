@@ -8,13 +8,58 @@ assay answers one question about an API: *do the tests we have actually check th
 
 It is deterministic and fully offline. No API key is needed. An optional LLM mapper exists only as a disabled interface stub.
 
-It is a learning-focused portfolio project for AI/ML engineering and QA automation. Everything below is measured on one small demo API and says nothing about other APIs.
+It is a learning-focused portfolio project between QA automation and ML evaluation. The matching uses classical text similarity (TF-IDF), not a language model; the ML-style practice is in how it is measured: hand labels, a development/test split, precision and recall, Cohen's kappa, and mutation testing. Everything below is measured on one small demo API and says nothing about other APIs.
+
+## The problem
+
+Teams usually know how many tests they have, not which requirement each one proves. A test can pass while the rule it was meant to guard is broken, and a requirement can have no test at all without anyone noticing. assay makes both checkable: it links requirements to tests, lists the requirements with no real test and why, and then checks whether the tests notice when the API is deliberately broken.
 
 ## Demo
 
 ![Terminal demo: assay map, the gap reasons, assay acceptance, assay evaluate mutants, assay compare](docs/demo.gif)
 
 The animation is rendered from the real captured output of these commands; only the typing is synthetic (`python scripts/make_demo_gif.py` regenerates it, needs Pillow). The `10 of 10` on the last line includes one kill that was tuned to its mutant; see Results.
+
+## Example
+
+A requirement, written as structured data (`criteria.yaml`):
+
+```yaml
+- id: REQ-004
+  method: POST
+  path: /products
+  field: request.name
+  constraint: min_length
+  value: 3
+  expected_status: 422
+  description: Product name shorter than three characters is rejected.
+```
+
+`assay map` links it to the baseline test generated from the OpenAPI spec, with its score:
+
+```
+| REQ-004 | BASE-BD70624B4DB6 (0.5813) POST /products — body.name — just below minimum length 3 |
+```
+
+`assay acceptance` generates a test for it directly from the same fields:
+
+```python
+@pytest.mark.req('REQ-004')
+def test_req_004(client):
+    response = client.post(
+        '/products',
+        json={'category': 'book', 'name': 'xx', 'price': 9.99},
+    )
+    assert response.status_code == 422, response.text
+```
+
+And when no test can verify a requirement, the report says why instead of staying silent:
+
+```
+| REQ-002 | needs_response_body_check | the criterion is about response.body.status, but the 1 candidate test(s) check only status |
+```
+
+The baseline asserts status codes only, so it cannot verify a rule about a response body; that is what the mutation results below show.
 
 ## Results
 
@@ -97,6 +142,14 @@ Output is deterministic: running a command twice gives identical files. CI (Ubun
 | M3 Exporter and runner, M4 Requirement mapping | done |
 | M5 Evaluation harness | done; a second-rater pass is recorded, the labeller's own self-agreement pass is pending |
 | M6 Comparison and docs | done |
+
+## Related tools
+
+assay is a learning project on one demo API, not a replacement for any of these; it asks a different question.
+
+- Tools such as [Schemathesis](https://pypi.org/project/schemathesis/) generate test cases from an OpenAPI schema (property-based) to find crashes and schema violations. assay's baseline is simpler and deterministic, and its focus is whether *requirements* are verified, not finding new bugs.
+- Mutation testing tools such as [mutmut](https://pypi.org/project/mutmut/) mutate a program's source code. assay mutates the API's behaviour (10 hand-written variants of the demo server) to see whether the tests notice.
+- Test management tools keep a traceability matrix linking requirements to tests, usually maintained by hand. assay proposes the links automatically and measures how accurate its links are.
 
 ## Known limitations
 

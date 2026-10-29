@@ -178,3 +178,34 @@ def test_a_value_the_criterion_lists_as_supported_is_never_expected_rejected() -
     assert "toy" not in tried
     assert "book" not in tried
     assert "__unsupported__" in tried
+
+
+def test_the_readme_example_is_real(tmp_path: Path) -> None:
+    """The README shows a criterion, its generated test and two report rows.
+
+    Each must be exactly what the tool produces today, so the example cannot drift.
+    """
+    from assay import cli
+
+    readme = (ROOT / "README.md").read_text(encoding="utf-8")
+
+    criteria = (ROOT / "criteria.yaml").read_text(encoding="utf-8")
+    assert readme.split("```yaml\n", 1)[1].split("```", 1)[0] in criteria
+
+    export_acceptance_tests(SPEC, CRITERIA, tmp_path / "generated")
+    generated = (tmp_path / "generated" / "test_acceptance.py").read_text(
+        encoding="utf-8"
+    )
+    snippet = readme.split("```python\n", 1)[1].split("```", 1)[0]
+    assert snippet.strip() in generated
+
+    assert cli.main(["map", "--output", str(tmp_path / "map")]) == 0
+    report = (tmp_path / "map" / "report.md").read_text(encoding="utf-8")
+    shown = [
+        line
+        for line in readme.splitlines()
+        if line.startswith(("| REQ-004 |", "| REQ-002 |"))
+    ]
+    assert len(shown) == 2
+    for line in shown:
+        assert line in report, line
