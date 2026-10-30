@@ -144,12 +144,13 @@ def test_the_markdown_states_sample_sizes_and_limitations():
     assert "3 criteria, 3 mutants, 3 baseline tests, 2 criteria-driven tests" in text
     assert "never combined into one number" in text
     assert "not comparable across suites" in text
-    assert "partly circular" in text
+    assert "true by construction" in text
+    assert "not independent" in text
+    assert "seeded faults" in text
     assert "Mapped is not verified" in text
     assert "No equivalent mutants were declared" in text
-    assert "One kill is tuned to its mutant" in text
     assert "| A. Baseline (schema only) | 3 | 1 of 3 | 0.333 |" in text
-    assert "| C. Combined (A + B) | 5 | 3 of 3 | 1.000 |" in text
+    assert "| C. Combined (A + B) | 5 | 3 of 3 † | 1.000 † |" in text
 
 
 # --- the real comparison on the committed spec and criteria -------------------------
@@ -177,10 +178,14 @@ def test_the_real_comparison_matches_the_measured_numbers(real_run):
     assert len(suites["baseline"]["requirement_coverage"]["covered"]) == 13
     assert suites["baseline"]["mutation"]["killed"] == 6
     assert len(suites["criteria"]["requirement_coverage"]["covered"]) == 18
-    assert suites["criteria"]["mutation"]["killed"] == 8
+    assert suites["criteria"]["mutation"]["killed"] == 7
+    assert suites["criteria"]["mutation"]["killed_including_tuned"] == 8
+    assert suites["criteria"]["mutation"]["tuned_kills"] == ["category_accepts_toy"]
     assert len(suites["combined"]["requirement_coverage"]["covered"]) == 18
-    assert suites["combined"]["mutation"]["killed"] == 10
-    assert suites["combined"]["mutation"]["survived"] == []
+    assert suites["combined"]["mutation"]["killed"] == 9
+    assert suites["combined"]["mutation"]["killed_including_tuned"] == 10
+    assert suites["combined"]["mutation"]["survived"] == ["category_accepts_toy"]
+    assert suites["combined"]["mutation"]["survived_including_tuned"] == []
 
 
 def test_combined_never_does_worse_than_either_suite(real_run):
@@ -196,8 +201,13 @@ def test_combined_never_does_worse_than_either_suite(real_run):
     )
 
 
-def test_toy_is_caught_only_by_the_criteria_driven_suite(real_run):
+def test_toy_is_caught_only_by_the_criteria_driven_suite_and_only_after_tuning(
+    real_run,
+):
     rows = {row["mutant"]: row["killed_by"] for row in real_run[0]["mutants"]}
+    tuned = {row["mutant"]: row["tuned_kill_in"] for row in real_run[0]["mutants"]}
+
+    assert tuned["category_accepts_toy"] == ["criteria", "combined"]
 
     assert rows["category_accepts_toy"] == {
         "baseline": False,
@@ -254,7 +264,10 @@ def test_the_command_reproduces_the_same_bytes(real_run, tmp_path, capsys):
             base / "reports" / name
         ).read_bytes()
     printed = capsys.readouterr().out
-    assert "B. Criteria-driven: covers 18 of 18 criteria; kills 8 of 10" in printed
+    assert (
+        "B. Criteria-driven: covers 18 of 18 criteria (by construction); "
+        "detects 7 of 10 seeded faults (8 of 10 counting 1 kill tuned to its mutant)"
+    ) in printed
 
 
 def test_a_failing_control_run_rejects_the_whole_comparison(tmp_path, monkeypatch):

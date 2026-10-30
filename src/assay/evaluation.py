@@ -23,6 +23,8 @@ from pathlib import Path
 from typing import Any
 
 from assay import metrics
+from assay.ablation import LABELS as ABLATION_LABELS
+from assay.ablation import VARIANTS, ablation_markdown, evaluate_ablation
 from assay.demo_api import MUTANTS
 from assay.mapping import (
     Criterion,
@@ -251,8 +253,8 @@ def write_label_sheet(
         "tests": len(tests),
     }
     Path(meta_path).write_text(
-        json.dumps(meta, indent=2, sort_keys=True) + "\n", encoding="utf-8"
-    )
+        json.dumps(meta, indent=2, sort_keys=True) + "\n", encoding="utf-8",
+            newline="\n")
 
 
 # --- reading labels -----------------------------------------------------------
@@ -754,7 +756,9 @@ def evaluate_mutants(
     }
     output_dir.mkdir(parents=True, exist_ok=True)
     (output_dir / "mutation.json").write_text(
-        json.dumps(result, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+        json.dumps(result, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+        newline="\n",
     )
     return result
 
@@ -865,6 +869,7 @@ def register_commands(commands: Any) -> None:
     for name, help_text in (
         ("sample", "write a blank, score-blind sheet of pairs to label"),
         ("mapping", "score the mapper against a filled-in label sheet"),
+        ("ablation", "compare rules only, rules + TF-IDF, and TF-IDF only"),
         ("mutants", "run the generated suite against the demo API mutants"),
     ):
         part = parts.add_parser(name, help=help_text)
@@ -880,7 +885,7 @@ def register_commands(commands: Any) -> None:
         if name == "sample":
             part.add_argument("--seed", type=int, default=DEFAULT_SEED)
             part.add_argument("--force", action="store_true", help="overwrite labels")
-        if name == "mapping":
+        if name in ("mapping", "ablation"):
             part.add_argument("--threshold", type=float, default=0.4)
             part.add_argument("--top-k", type=int, default=3)
             part.add_argument("--output", type=Path, default=Path("reports/evaluation"))
@@ -946,8 +951,7 @@ def handle(arguments: argparse.Namespace) -> int:
                 mapping_path=arguments.mapping,
             )
             (arguments.output / "mutation.md").write_text(
-                mutation_markdown(result), encoding="utf-8"
-            )
+                mutation_markdown(result), encoding="utf-8", newline="\n")
             score = result["score"]
             print(f"Killed {score['killed']} of {score['executed']} mutants")
             print(f"Survived: {', '.join(score['survived']) or 'none'}")
@@ -983,11 +987,12 @@ def handle(arguments: argparse.Namespace) -> int:
             )
             arguments.output.mkdir(parents=True, exist_ok=True)
             (arguments.output / "agreement.json").write_text(
-                json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8"
-            )
+                json.dumps(report, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+        newline="\n",
+    )
             (arguments.output / "agreement.md").write_text(
-                agreement_markdown(report), encoding="utf-8"
-            )
+                agreement_markdown(report), encoding="utf-8", newline="\n")
             print(
                 f"Agreed on {report['agreements']} of {report['pairs_compared']} "
                 f"pairs; kappa {_fmt(report['cohens_kappa'])}"
@@ -1007,6 +1012,28 @@ def handle(arguments: argparse.Namespace) -> int:
             print(f"Wrote {len(rows)} pairs to label in {arguments.labels}")
             return 0
         label_rows = load_labels(arguments.labels, criteria, tests, arguments.meta)
+        if arguments.evaluation == "ablation":
+            ablation_report = evaluate_ablation(
+                label_rows,
+                criteria,
+                tests,
+                threshold=arguments.threshold,
+                top_k=arguments.top_k,
+            )
+            arguments.output.mkdir(parents=True, exist_ok=True)
+            (arguments.output / "ablation.json").write_text(
+                json.dumps(ablation_report, indent=2, sort_keys=True) + "\n",
+                encoding="utf-8", newline="\n")
+            (arguments.output / "ablation.md").write_text(
+                ablation_markdown(ablation_report), encoding="utf-8", newline="\n")
+            for variant in VARIANTS:
+                scored = ablation_report["variants"][variant]["all"]
+                print(
+                    f"{ABLATION_LABELS[variant]}: precision "
+                    f"{_fmt(scored['precision'])}, recall {_fmt(scored['recall'])}"
+                )
+            print(f"Reports written to {arguments.output}")
+            return 0
         report = evaluate_mapping(
             label_rows,
             criteria,
@@ -1016,11 +1043,12 @@ def handle(arguments: argparse.Namespace) -> int:
         )
         arguments.output.mkdir(parents=True, exist_ok=True)
         (arguments.output / "mapping.json").write_text(
-            json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8"
-        )
+            json.dumps(report, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+        newline="\n",
+    )
         (arguments.output / "mapping.md").write_text(
-            mapping_markdown(report), encoding="utf-8"
-        )
+            mapping_markdown(report), encoding="utf-8", newline="\n")
         print(f"Evaluated {report['labelled_pairs']} labelled pairs")
         print(f"Reports written to {arguments.output}")
         return 0

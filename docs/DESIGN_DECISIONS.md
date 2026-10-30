@@ -1,7 +1,7 @@
-# Design decisions and how to explain them
+# Design decisions and their limits
 
 For each choice: what it is, why, what was rejected, and where it falls short. The
-limits are part of the answer; interviewers trust a candidate who volunteers them.
+limits are part of each decision and are stated with it.
 
 ## The one-paragraph version
 
@@ -74,10 +74,13 @@ the tests catch. Everything is deterministic and runs offline.
 ### 7. Three measurements, never merged
 - **Mapping quality** (precision, recall) against hand labels.
 - **Requirement coverage**: the share of requirements with a passing tagged test.
-- **Mutation score**: mutants killed over mutants executed.
+- **Mutation score**: seeded faults detected over faults executed. The "mutants"
+  are ten hand-written broken copies of the API, not output of automatic mutation
+  operators, so this is a seeded-fault score.
 - **Why separate:** they answer different questions and have different weaknesses.
   Coverage can be inflated by circularity (tests generated from the requirements being
-  counted). Mutation score is the more independent check. Averaging them would hide
+  counted). Mutation score is less circular than coverage, but it is not independent (see
+  decision 8). Averaging them would hide
   that.
 - An empty denominator is reported as undefined, not 0 or 1.
 
@@ -116,9 +119,10 @@ the tests catch. Everything is deterministic and runs offline.
 
 ### 11. Second raters
 - Two AI models labelled the same 20 pairs as a second opinion: each agreed with the
-  first labels on 19 of 20 (kappa 0.773). One was not blind to the mapper; the other
-  was given a blind packet, as reported. The first labeller's own self-agreement pass
-  is still pending. AI raters are not independent humans and do not validate the
+  first labels on 19 of 20. One (Claude) was not blind to the mapper; the other
+  (ChatGPT, model name as stated by the labeller and unverified) was given a blind
+  packet, as stated. Kappa is not reported: at 20 pairs with about 5 positives it is
+  not meaningful. The first labeller's own self-agreement pass is still pending. AI raters are not independent humans and do not validate the
   labels.
 
 ### 12. Three suites in the final comparison
@@ -127,13 +131,15 @@ the tests catch. Everything is deterministic and runs offline.
 - C is the union of A and B. Every test builds its own fresh app, so the union equals
   one combined run; this was checked by running both suites in one session on the
   control and all 10 mutants.
-- Result: A 13/18 criteria and 6/10 mutants; B 18/18 and 8/10; C 18/18 and 10/10.
+- Result: A 13/18 criteria and 6/10 faults detected; B 7/10; C 9/10. Coverage for B
+  and C (18/18) is true by construction and not an achievement. With the tuned kill
+  counted, B is 8/10 and C is 10/10.
 - **The tuned kill:** `category_accepts_toy` survived every suite until REQ-009's test
   was extended to try several unsupported values, including `toy`. That was done after
-  the mutant survived, so the kill is tuned to the mutant. The independent figures are
-  B 7/10 and C 9/10. Say this before you are asked.
+  the mutant survived, so the kill is tuned to the mutant. The headline figures are
+  B 7/10 and C 9/10; the tuned figures are shown only as a footnote.
 
-## Questions to expect
+## Questions a reviewer might ask
 
 **"Is 4 of 4 on the test half good?"** It is a count on a tiny, stratified sample that
 the rules were tuned against. I would not call it a quality result.
@@ -142,8 +148,9 @@ the rules were tuned against. I would not call it a quality result.
 would not be reproducible. The interface is there, disabled.
 
 **"Why is coverage 18/18 for the criteria-driven suite?"** Because those tests were
-generated from the same requirements, so it is partly circular. Mutation score is the
-independent check.
+generated from the same requirements, so it is true by construction and says nothing about
+test quality. Mutation score is less circular but not independent: the same author
+wrote the faults, criteria and tests.
 
 **"What would you do next?"** Draw and independently label a new holdout sheet, add
 mutants written by someone else, run the self-agreement pass, and try a second API so

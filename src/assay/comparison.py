@@ -55,13 +55,39 @@ def _coverage_dict(
     }
 
 
-def _mutation_dict(killed_by_mutant: dict[str, bool]) -> dict[str, Any]:
-    score = metrics.mutation_score(killed_by_mutant)
+# Kills that exist only because a test was changed after the mutant survived. They
+# are reported, but kept out of the headline score: a kill that was tuned to its
+# mutant is not independent evidence. suite -> {mutant: why}.
+TUNED_KILLS: dict[str, dict[str, str]] = {
+    "criteria": {
+        "category_accepts_toy": (
+            "REQ-009's test was extended with the value 'toy' after the mutant "
+            "survived"
+        )
+    }
+}
+
+
+def _mutation_dict(
+    killed_by_mutant: dict[str, bool], tuned: Sequence[str] = ()
+) -> dict[str, Any]:
+    """Headline score counts only independent kills; tuned kills are shown apart."""
+    independent = {
+        name: killed and name not in tuned for name, killed in killed_by_mutant.items()
+    }
+    headline = metrics.mutation_score(independent)
+    including = metrics.mutation_score(killed_by_mutant)
     return {
-        "executed": score.executed,
-        "killed": score.killed,
-        "survived": list(score.survived),
-        "mutation_score": score.score,
+        "executed": headline.executed,
+        "killed": headline.killed,
+        "survived": list(headline.survived),
+        "mutation_score": headline.score,
+        "killed_including_tuned": including.killed,
+        "mutation_score_including_tuned": including.score,
+        "survived_including_tuned": list(including.survived),
+        "tuned_kills": sorted(
+            name for name in tuned if killed_by_mutant.get(name, False)
+        ),
     }
 
 
@@ -74,6 +100,7 @@ def build_comparison(
     criteria_killed: dict[str, bool],
     tests: dict[str, int],
     descriptions: dict[str, str],
+    tuned: dict[str, dict[str, str]] | None = None,
 ) -> dict[str, Any]:
     """Pure assembly of the comparison from already measured results.
 
@@ -83,6 +110,14 @@ def build_comparison(
     """
     if set(baseline_killed) != set(criteria_killed):
         raise EvaluationError("both suites must be run against the same mutants")
+    tuned = tuned or {}
+    tuned_criteria = set(tuned.get("criteria", {})) & set(criteria_killed)
+    # The combined suite's kill is only tuned if the baseline did not also make it.
+    tuned_by_suite = {
+        "baseline": set(),
+        "criteria": tuned_criteria,
+        "combined": {name for name in tuned_criteria if not baseline_killed[name]},
+    }
     combined_killed = {
         name: baseline_killed[name] or criteria_killed[name]
         for name in baseline_killed
@@ -107,7 +142,7 @@ def build_comparison(
             name: {
                 "tests": tests[name],
                 "requirement_coverage": _coverage_dict(criteria_ids, rows[name]),
-                "mutation": _mutation_dict(killed[name]),
+                "mutation": _mutation_dict(killed[name], sorted(tuned_by_suite[name])),
             }
             for name in SUITES
         },
@@ -116,6 +151,11 @@ def build_comparison(
                 "mutant": name,
                 "description": descriptions.get(name, ""),
                 "killed_by": {suite: killed[suite][name] for suite in SUITES},
+                "tuned_kill_in": [
+                    suite
+                    for suite in SUITES
+                    if name in tuned_by_suite[suite] and killed[suite][name]
+                ],
             }
             for name in sorted(baseline_killed)
         ],
@@ -210,12 +250,13 @@ def run_comparison(
             + control["summary"]["total"],
         },
         descriptions=MUTANTS,
+        tuned=TUNED_KILLS,
     )
     comparison["configured"] = {"threshold": threshold, "top_k": top_k}
     output_dir.mkdir(parents=True, exist_ok=True)
     (output_dir / "comparison.json").write_text(
-        json.dumps(comparison, indent=2, sort_keys=True) + "\n", encoding="utf-8"
-    )
+        json.dumps(comparison, indent=2, sort_keys=True) + "\n", encoding="utf-8",
+            newline="\n")
     (output_dir / "comparison.md").write_text(
         comparison_markdown(comparison), encoding="utf-8", newline="\n"
     )
@@ -231,6 +272,10 @@ _LABELS = {
     "criteria": "B. Criteria-driven",
     "combined": "C. Combined (A + B)",
 }
+
+
+def _tuned_count(mutation: dict[str, Any]) -> int:
+    return len(mutation["tuned_kills"])
 
 
 def comparison_markdown(report: dict[str, Any]) -> str:
@@ -258,11 +303,20 @@ def comparison_markdown(report: dict[str, Any]) -> str:
     for name in SUITES:
         suite = report["suites"][name]
         cov = suite["requirement_coverage"]
+        mark = " †" if name != "baseline" else ""
         lines.append(
             f"| {_LABELS[name]} | {suite['tests']} | "
-            f"{len(cov['covered'])} of {cov['criteria']} | {_fmt(cov['coverage'])} |"
+            f"{len(cov['covered'])} of {cov['criteria']}{mark} | "
+            f"{_fmt(cov['coverage'])}{mark} |"
         )
-    lines += ["", "Criteria with no passing tagged test:", ""]
+    lines += [
+        "",
+        "† True by construction: these tests were generated from the criteria being "
+        "counted, so every criterion has a test. It says nothing about test quality.",
+        "",
+        "Criteria with no passing tagged test:",
+        "",
+    ]
     for name in SUITES:
         cov = report["suites"][name]["requirement_coverage"]
         missing = [*cov["mapped_not_passing"], *cov["not_mapped"]]
@@ -271,51 +325,69 @@ def comparison_markdown(report: dict[str, Any]) -> str:
         "",
         "## Mutation score",
         "",
-        "Killed means at least one test of the suite failed on the mutant. A passing "
-        "control run is required first. Setup errors never count as kills.",
+        "The \"mutants\" are hand-written seeded faults (copies of the API with one "
+        "rule broken), not mutants produced by automatic mutation operators. The "
+        "mutation score is the share of seeded faults a suite detects: a fault is "
+        "detected when at least one test of the suite failed on it. A passing "
+        "control run is required first. Setup errors never count.",
         "",
-        "| suite | mutants killed | mutation score | survived |",
-        "|---|---|---|---|",
+        "The headline score counts only independent kills. A kill that exists "
+        "because a test was changed after the fault survived is shown separately.",
+        "",
+        "| suite | faults detected | mutation score | survived "
+        "| detected if tuned kills are counted |",
+        "|---|---|---|---|---|",
     ]
     for name in SUITES:
         mutation = report["suites"][name]["mutation"]
         survived = ", ".join(mutation["survived"]) or "none"
+        tuned = (
+            f"{mutation['killed_including_tuned']} of {mutation['executed']}"
+            if _tuned_count(mutation)
+            else "same"
+        )
         lines.append(
             f"| {_LABELS[name]} | {mutation['killed']} of {mutation['executed']} | "
-            f"{_fmt(mutation['mutation_score'])} | {survived} |"
+            f"{_fmt(mutation['mutation_score'])} | {survived} | {tuned} |"
         )
     lines += ["", "### Per mutant", "", "| mutant | A | B | C |", "|---|---|---|---|"]
     for row in report["mutants"]:
-        marks = ["killed" if row["killed_by"][name] else "survived" for name in SUITES]
+        marks = []
+        for name in SUITES:
+            if not row["killed_by"][name]:
+                marks.append("survived")
+            elif name in row["tuned_kill_in"]:
+                marks.append("killed (tuned)")
+            else:
+                marks.append("killed")
         lines.append(f"| {row['mutant']} | " + " | ".join(marks) + " |")
+    notes = [
+        f"{mutant}: {why}"
+        for suite_notes in TUNED_KILLS.values()
+        for mutant, why in suite_notes.items()
+    ]
+    lines += ["", "Tuned kills: " + "; ".join(notes) + ".", ""] if notes else [""]
     step = (
-        f"One extra kill moves the score by {1 / sizes['mutants']:.1f}."
+        f"One extra detection moves the score by {1 / sizes['mutants']:.1f}."
         if sizes["mutants"]
         else "No mutants were executed, so the score is undefined."
     )
     lines += [
-        "",
         "## Limitations",
         "",
         "- **Coverage is not comparable across suites.** For A the tags come from "
-        "the mapper, so its coverage inherits the mapper's errors. For B and C the "
-        "tests were generated from the criteria being counted, so their coverage is "
-        "partly circular. Coverage is a traceability measure, not proof that the "
-        "tests are good.",
+        "the mapper, so its coverage inherits the mapper's errors. For B and C it "
+        "is true by construction (†). Coverage is a traceability measure, not proof "
+        "that the tests are good.",
         "- **A passing test is not a verified requirement.** Mapped is not verified.",
-        "- **Mutation score is the independent check, but it is small.** The "
-        f"{sizes['mutants']} mutants were written by hand inside this project, "
-        "not by an independent party, for this one demo API, and some target "
-        "behaviours the criteria describe, so "
-        "B's kills partly reflect that the same hands wrote both. " + step,
-        "- **One kill is tuned to its mutant.** REQ-009's generated test tries "
-        "`toy` among its unsupported values because `category_accepts_toy` "
-        "survived without it, so B's and C's kill of that mutant is not "
-        "independent. Counting it, B and C score one higher than the independent "
-        "figures.",
+        "- **The mutation score is less circular than coverage, but it is not "
+        "independent.** The "
+        f"{sizes['mutants']} seeded faults, the criteria and the tests were all "
+        "written inside this project, and some faults target behaviour the criteria "
+        "describe, so B's detections partly reflect that the same hands wrote both. "
+        + step,
         "- **No equivalent mutants were declared.** A survivor may be a real gap or "
-        "a mutant no test could distinguish; each survivor should be read, not "
-        "counted blindly.",
+        "a fault no test could distinguish; read each survivor, do not just count.",
         "- **C is the union of A and B**, taken from separate runs. See the module "
         "docstring for why that equals one combined run.",
         "- **Results describe this demo API and these criteria.** They are not "
@@ -362,9 +434,17 @@ def handle(arguments: argparse.Namespace) -> int:
         suite = report["suites"][name]
         cov = suite["requirement_coverage"]
         mutation = suite["mutation"]
+        by_construction = " (by construction)" if name != "baseline" else ""
+        tuned = (
+            f" ({mutation['killed_including_tuned']} of {mutation['executed']} "
+            f"counting {_tuned_count(mutation)} kill tuned to its mutant)"
+            if _tuned_count(mutation)
+            else ""
+        )
         print(
             f"{_LABELS[name]}: covers {len(cov['covered'])} of {cov['criteria']} "
-            f"criteria; kills {mutation['killed']} of {mutation['executed']} mutants"
+            f"criteria{by_construction}; detects {mutation['killed']} of "
+            f"{mutation['executed']} seeded faults{tuned}"
         )
     print(f"Reports written to {arguments.output}")
     return 0

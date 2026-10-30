@@ -78,7 +78,7 @@ Worked example (also a test): 10 pairs, five yes each time, one yes flipped to n
 and one no flipped to yes. Observed agreement 8/10, chance 0.5, kappa 0.6.
 
 What it does not show: with 20 pairs one changed label moves observed agreement by
-5 points, kappa is unstable when most labels are the same, and this is one person's
+5 points, kappa is not meaningful at this size and is unstable when most labels are the same, and this is one person's
 consistency with themselves, not agreement between people. No threshold for "good
 enough" is applied.
 
@@ -101,8 +101,9 @@ test, R2 only a failing one, R3 none. Coverage = 2/4.
 
 **Circularity.** When targeted tests are generated from the same criteria being
 measured, coverage partly measures that the tool did what it was told. Treat it
-as a traceability measure, not proof the tests are good. Mutation score is the
-independent check.
+as a traceability measure, not proof the tests are good. Mutation score is less
+circular, but not independent: the faults, criteria and tests were all written in
+this project, and some faults target behaviour the criteria describe.
 
 Mapped is not verified: a test that maps to a criterion is a candidate, and only
 a *passing* tagged test counts.
@@ -111,6 +112,12 @@ a *passing* tagged test counts.
 
 **mutation score = valid, non-equivalent mutants killed / valid, non-equivalent
 mutants executed.**
+
+Terminology: the ten "mutants" are hand-written seeded faults (copies of the API with
+one rule broken), not output of automatic mutation operators. The names `mutant` and
+`mutation_score` are kept in the tool; read them as seeded faults and the share
+detected. A kill made by changing a test after its fault survived is a *tuned kill*:
+the headline score excludes it and it is reported separately.
 
 - A mutant is **killed** when at least one test `failed` on it. A setup `error`
   (for example a broken fixture) does not count: it is not evidence that a test
