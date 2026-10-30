@@ -2,13 +2,17 @@
 
 [![CI](https://github.com/vaishnavi-kalmegh/assay/actions/workflows/ci.yml/badge.svg)](https://github.com/vaishnavi-kalmegh/assay/actions/workflows/ci.yml)
 
+[![CI](https://github.com/vaishnavi-kalmegh/assay/actions/workflows/ci.yml/badge.svg)](https://github.com/vaishnavi-kalmegh/assay/actions/workflows/ci.yml)
+
 **Offline-first API test generation and requirement traceability.**
 
-assay answers one question about an API: *do the tests we have actually check the requirements we wrote down?* Given an OpenAPI specification and structured acceptance criteria it generates runnable pytest tests, links each criterion to the tests that could verify it, reports the criteria with no real test, and then measures itself: how well the linking matches hand labels, how many requirements have a passing test, and how many deliberately broken versions of the API the tests catch. Those three measurements are reported separately and never merged into one number.
+assay answers one question about an API: *do the tests we have actually check the requirements we wrote down?*
 
-It is deterministic and fully offline. No API key is needed. An optional LLM mapper exists only as a disabled interface stub.
+Given an OpenAPI specification and structured acceptance criteria, it generates runnable pytest tests and links each criterion to the tests that could verify it. It reports the criteria with no real test, then measures itself with three separate numbers: mapping precision and recall against hand labels, requirement coverage, and the share of seeded faults the tests detect. These are never merged into one score.
 
-It is a learning-focused portfolio project between QA automation and ML evaluation. The matching uses classical text similarity (TF-IDF), not a language model; the ML-style practice is in how it is measured: hand labels, a development/test split, precision and recall, Cohen's kappa, and mutation testing. Everything below is measured on one small demo API and says nothing about other APIs.
+It is deterministic and fully offline, and needs no API key. An optional LLM mapper exists only as a disabled interface stub.
+
+It is a learning-focused portfolio project between QA automation and ML evaluation. The matching uses classical text similarity (TF-IDF), not a language model; the ML-style practice is in how it is measured: hand labels, a development/test split, precision and recall, and seeded-fault detection. Everything below is measured on one small demo API and says nothing about other APIs.
 
 ## The problem
 
@@ -18,7 +22,7 @@ Teams usually know how many tests they have, not which requirement each one prov
 
 ![Terminal demo: assay map, the gap reasons, assay acceptance, assay evaluate mutants, assay compare](docs/demo.gif)
 
-The animation is rendered from the real captured output of these commands; only the typing is synthetic (`python scripts/make_demo_gif.py` regenerates it, needs Pillow). The `10 of 10` on the last line includes one kill that was tuned to its mutant; see Results.
+The animation is rendered from the real captured output of these commands; only the typing is synthetic (`python scripts/make_demo_gif.py` regenerates it, needs Pillow). The last line shows the headline figures and, in brackets, the tuned result; see Results.
 
 ## Example
 
@@ -59,26 +63,31 @@ And when no test can verify a requirement, the report says why instead of stayin
 | REQ-002 | needs_response_body_check | the criterion is about response.body.status, but the 1 candidate test(s) check only status |
 ```
 
-The baseline asserts status codes only, so it cannot verify a rule about a response body; that is what the mutation results below show.
+The baseline asserts status codes only, so it cannot verify a rule about a response body; that is what the seeded-fault results below show.
 
 ## Results
 
-`assay compare` runs three suites on the real demo API and on 10 hand-written mutants (copies of the API with one rule deliberately broken):
+`assay compare` runs three suites on the real demo API and on 10 seeded faults (hand-written copies of the API with one rule deliberately broken; these are not produced by automatic mutation operators):
 
-| Suite | Tests | Criteria with a passing tagged test | Mutants killed |
+| Suite | Tests | Criteria with a passing tagged test | Seeded faults detected |
 |---|---|---|---|
 | A. Baseline (generated from the OpenAPI spec only) | 43 | 13 of 18 | 6 of 10 |
-| B. Criteria-driven (one test per criterion) | 18 | 18 of 18 | 8 of 10 (7 before the `toy` change below) |
-| C. Combined (A and B) | 61 | 18 of 18 | 10 of 10 (9 before the `toy` change below) |
+| B. Criteria-driven (one test per criterion) | 18 | 18 of 18 † | 7 of 10 ‡ |
+| C. Combined (A and B) | 61 | 18 of 18 † | 9 of 10 ‡ |
 
-Read these numbers with their limits:
+† True by construction: B's tests are generated from the criteria being counted, so every criterion has a test. This says nothing about test quality.
 
-- **Coverage is not comparable across suites.** A's tags come from the mapper, so it inherits the mapper's errors. B and C are generated from the criteria being counted, so their coverage is partly circular. It is a traceability measure, not proof of test quality.
-- **Mutation score is the more independent check, and it is small.** 10 mutants, hand-written inside this project, not by an independent party, for this one API; some target behaviour the criteria describe. One mutant moves the score by 0.1. No mutant was declared equivalent.
-- **What each suite misses.** A never asserts a response body and has no unknown-ID tests, so it misses `get_unknown_product_200`, `order_unknown_product_201` and `health_body_wrong`. B misses boundary mutants A catches. No suite caught `category_accepts_toy` at first (A 6, B 7, C 9 of 10), because no test sent the value `toy`. REQ-009's generated test was then extended to try several unsupported values, including `toy`, which is what made B and C kill it. **That was done after the mutant survived, so the kill is tuned to the mutant, not an independent result.** The independent measurement is the earlier one: B 7 of 10 and C 9 of 10. Treat 10 of 10 as "no known survivors", not as proof the tests are thorough.
-- **Mapper quality** was scored against 40 hand-labelled pairs (5 positives, one labeller). At the default threshold 0.4 it found 1 of 1 positives in the development half and 4 of 4 in the test half, with no false positives. That is a count, not a quality claim: the rules were revised after the labelled errors were seen, so the test half is not an independent holdout. The threshold 0.4 is a frozen default, not a tuned value, because the development half has too few positives for a sweep to choose one. Two AI second raters each agreed with the labels on 19 of 20 re-labelled pairs (kappa 0.773 each; Claude was not blind to the mapper, ChatGPT 6 was given a blind packet, as reported by the user); your own self-agreement pass, which measures one person's consistency, is still pending.
+‡ Headline figures exclude one tuned kill. `category_accepts_toy` survived until REQ-009's test was extended with the value `toy`, after the fault was known. Counting it, B is 8 of 10 and C is 10 of 10.
 
-The full generated report is committed at `docs/results/comparison.md` (a test fails if it goes stale). Definitions are in `docs/METRICS.md`, the labelling protocol in `docs/LABELLING.md`, and the reasoning behind every design choice, with the questions to expect in an interview, in `docs/DESIGN_DECISIONS.md`.
+Reading the numbers:
+
+- **The detection score is small and not independent.** 10 faults, written in this project by the same author as the criteria and tests, and some target behaviour the criteria describe. It is less circular than coverage, not independent of it. One fault moves the score by 0.1, and no fault was declared equivalent.
+- **What each suite misses.** A never asserts a response body and has no unknown-ID tests, so it misses `get_unknown_product_200`, `order_unknown_product_201` and `health_body_wrong`. B misses boundary faults A catches. No suite detects `category_accepts_toy` without the tuned test.
+- **Mapper quality** was scored against 40 hand-labelled pairs (5 positives, one labeller). At the default threshold 0.4 it found 1 of 1 positives in the development half and 4 of 4 in the test half, with no false positives. That is a count, not a quality claim; see the limitations below.
+- **What TF-IDF adds.** On the same 40 labelled pairs, the hard rules alone find all 5 positives but also predict 9 false ones (precision 0.36); adding TF-IDF at the frozen threshold removes all 9 (precision 1.00, recall 1.00); TF-IDF alone, without the rules, scores precision 0.57 and recall 0.80. So on this sample each part earns its place, but 5 positives from one labeller is a description, not evidence of general quality. See `docs/results/ablation.md`, regenerated by `assay evaluate ablation`.
+- **Second raters.** Two AI models each agreed with the first labels on 19 of 20 re-labelled pairs: Claude (not blind to the mapper) and ChatGPT (given a blind packet; model name as stated by the labeller, unverified). Kappa is not reported because it is not meaningful at this size. The labeller's own self-agreement pass is not yet done.
+
+The full generated report is committed at `docs/results/comparison.md` (a test fails if it goes stale). Definitions are in `docs/METRICS.md`, the labelling protocol in `docs/LABELLING.md`, and the reasoning behind each design choice and its limits in `docs/DESIGN_DECISIONS.md`.
 
 ## How it works
 
@@ -97,20 +106,20 @@ flowchart LR
     bt --> run
     at --> run
     run --> api[Demo API]
-    run --> mutants[10 API mutants]
+    run --> mutants[10 seeded faults]
     api --> cmp[assay compare]
     mutants --> cmp
-    cmp --> out[Coverage and mutation score, kept separate]
+    cmp --> out[Coverage and fault detection, kept separate]
 ```
 
 1. **Baseline.** Tests are derived from the OpenAPI document alone and never read the criteria: valid values, boundaries, wrong types, missing required fields, invalid enum values. Case IDs are stable hashes, so labels stay valid.
 2. **Mapper.** Hard rules decide which tests could verify a criterion (same operation, same expected status, checks what the criterion needs, right field, right direction of the constraint); TF-IDF similarity then ranks the eligible ones against a threshold. A criterion with no match is reported with the reason. `response.status equals N` is matched by rule when a test asserts that status.
 3. **Acceptance generator.** One explicit test per structured criterion, built from its fields only, never from guessed behaviour.
-4. **Evaluation.** Mapping precision and recall against hand labels, requirement coverage, and mutation score, each its own measurement.
+4. **Evaluation.** Mapping precision and recall against hand labels, requirement coverage, and seeded-fault detection (the mutation score), each its own measurement.
 
 ## Reproduce from a clean checkout
 
-Requires Python 3.11 or newer. No network access is needed after installing.
+Requires Python 3.11 or newer; CI runs 3.11, 3.12 and 3.13 on Ubuntu and Windows. No network access is needed after installing.
 
     python -m venv .venv
     # Windows: .venv\Scripts\activate
@@ -127,12 +136,13 @@ Other commands:
     assay run                # export, run and report the generated baseline tests
     assay acceptance         # generate and run the criteria-driven tests
     assay map                # map criteria.yaml to baseline tests and report gaps
-    assay evaluate mutants   # run the baseline against the 10 mutants
+    assay evaluate mutants   # run the baseline against the 10 seeded faults
     assay evaluate mapping   # score the mapper on the filled label sheet
+    assay evaluate ablation  # rules only vs rules + TF-IDF vs TF-IDF only
     assay evaluate relabel   # blank subset of the pairs to label again later
     assay evaluate agreement # compare the two labelling passes
 
-Output is deterministic: running a command twice gives identical files. CI (Ubuntu 24.04, Python 3.11) runs the tests, regenerates the OpenAPI document and checks it did not change, runs `assay acceptance` and `assay compare`, and lints the code and the generated files.
+Output is deterministic: running a command twice gives identical files, and tests check this across different hash seeds, that written files use Unix line endings, and that the committed results are byte-for-byte current. CI runs the tests, regenerates the OpenAPI document and checks it did not change, runs `assay acceptance` and `assay compare`, and lints the code and the generated files. Direct dependencies are pinned; transitive ones are not locked, so each CI run installs the latest compatible versions.
 
 ## Status
 
@@ -154,10 +164,15 @@ assay is a learning project on one demo API, not a replacement for any of these;
 ## Known limitations
 
 - One labeller, 40 labelled pairs, 5 positives; the sample is stratified, not random.
-- The mapper's rules were revised after labelled errors were seen; there is no independent holdout. Any claim that the mapper generalises needs a newly drawn, independently labelled sheet scored against a frozen mapper.
-- 10 hand-written mutants on one demo API; results do not transfer to other APIs.
-- Direct dependencies are pinned, transitive ones are not locked.
+- The mapper's rules were revised after labelled errors were seen, so the test half is not an independent holdout, and the threshold 0.4 is a frozen default because the development half has too few positives to tune one. A generalisation claim needs a newly drawn, independently labelled sheet scored against a frozen mapper.
+- AI second raters are not independent human raters.
+- The seeded faults and results are for one demo API and do not transfer to other APIs.
+- Direct dependencies are pinned, transitive ones are not locked; CI installs fresh each run.
 - Only a supported OpenAPI subset is handled; unsupported constructs fail with `UnsupportedSchemaError`.
+
+## License
+
+MIT. Copyright Vaishnavi Kalmegh. See `LICENSE`.
 
 ## Documentation
 

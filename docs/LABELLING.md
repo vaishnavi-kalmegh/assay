@@ -104,56 +104,59 @@ are; it does not replace them.
 
 ## A second rater (an AI model), not a self-agreement pass
 
-At your request, Claude (an AI model) labelled the same 20 pairs as
+On 2026-10-23 Claude (configured model id `claude-sonnet-5-5`; the serving model may
+differ) labelled the same 20 pairs as
 `data/relabelled_pairs.csv` and saved them to `data/relabelled_pairs_claude.csv`.
-Your own blank sheet `data/relabelled_pairs.csv` is untouched; your self-agreement
-pass is still open and this does not replace it. Run it with
+The labeller's own blank sheet `data/relabelled_pairs.csv` is untouched; the
+labeller's self-agreement pass is still open and this does not replace it. Run it with
 `assay evaluate agreement --relabels data/relabelled_pairs_claude.csv --second-rater "Claude (an AI model)"`;
 without `--second-rater` the report calls itself self-agreement, which it is not.
 
-How it was done: from the sheet text and the question above only, before opening your
+How it was done: from the sheet text and the question above only, before opening the
 first labels. It is **not blind to the mapper**: Claude helped write the mapper's
 rules and had seen the mapper's output and the evaluation result, which may have
 shaped its reading.
 
-Result: agreed on 19 of 20 pairs (observed agreement 0.950, Cohen's kappa 0.773;
-positives 2 from you, 3 from Claude). With 20 pairs one label moves agreement by
-5 points and kappa is unstable.
+Result: agreed on 19 of 20 pairs (observed agreement 0.950; positives 2 from the
+first labeller, 3 from Claude). With 20 pairs one label moves agreement by 5 points.
+The tool also prints Cohen's kappa, but it is not meaningful at this size (about 5
+positives) and is not reported as a result.
 
 The one disagreement is `REQ-008|BASE-D9059F5116BA` (development half): the criterion
 "Product category accepts a supported enum value" against the test
-`POST /products` "valid input". You labelled it 0, Claude 1 (marked unsure): the valid
+`POST /products` "valid input". The first labeller marked it 0, Claude 1 (marked unsure): the valid
 input posts one supported category, so a broken API that rejected supported
 categories would fail it, but it does not cover every value. It shows where the
 protocol is ambiguous: whether a generic valid-input test verifies an "accepts a
-supported value" criterion. **Your label stays the ground truth.** For scale only: had
+supported value" criterion. **The first labeller's label stays the ground truth.** For scale only: had
 that label been 1, the mapper would have missed it, and the development half would
 read 1 of 2 positives found instead of 1 of 1; the sweep would still not run (fewer
 than 5 development positives). No label was changed.
 
-## A third rater (ChatGPT 6), blind
+## A third rater (ChatGPT, model name unverified), blind
 
-The user gave the same 20 pairs to ChatGPT 6 using a blind packet (the protocol, the
-requirement and test text, no labels, no split, nothing about the mapper). The model
-name and what it was shown are as the user reported them; the project did not
-verify either. Its raw answer is saved unedited in
+On 2026-10-23 the labeller gave the same 20 pairs to ChatGPT using a blind packet
+(the protocol, the requirement and test text, no labels, no split, nothing about the
+mapper). The model name (given as "ChatGPT 6") and what it was shown are as stated
+by the labeller; the project could not verify either, so no exact model version is
+claimed. Its raw answer is saved unedited in
 `data/relabelled_pairs_chatgpt-6.csv`; run
-`assay evaluate agreement --relabels data/relabelled_pairs_chatgpt-6.csv --second-rater "ChatGPT 6 (model name as given by the user)"`.
+`assay evaluate agreement --relabels data/relabelled_pairs_chatgpt-6.csv --second-rater "ChatGPT (model name as stated by the labeller, unverified)"`.
 Unlike Claude it had not seen the mapper, so it is the closer to a blind reading.
 
-Result against the first labels: agreed on 19 of 20 (observed agreement 0.950, kappa
-0.773; positives 2 first pass, 3 from ChatGPT 6). Against Claude's labels it agreed
+Result against the first labels: agreed on 19 of 20 (observed agreement 0.950;
+positives 2 first pass, 3 from ChatGPT). Against Claude's labels it agreed
 on 18 of 20.
 
 Where the raters differ:
 
-| Pair | First labeller | Claude | ChatGPT 6 |
+| Pair | First labeller | Claude | ChatGPT |
 |---|---|---|---|
 | `REQ-008\|BASE-D9059F5116BA` (category accepts a supported value, "valid input") | 0 | 1 (unsure) | 0 |
 | `REQ-005\|BASE-24F2A691793C` (name over 40 chars rejected, missing required name) | 0 | 0 | 1 |
 
 On the first, two of three raters agree with the first labeller. On the second,
-ChatGPT 6 labelled 1 with a note that it holds "if name validation is enforced";
+ChatGPT labelled 1 with a note that it holds "if name validation is enforced";
 by the protocol a test for a missing name would still pass if over-long names were
 accepted, so the first labeller's 0 stands. No label was changed. Three raters
 agreeing on 18 of 20 pairs is some evidence the first labels are stable, from a

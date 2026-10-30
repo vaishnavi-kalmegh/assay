@@ -15,8 +15,7 @@ def main() -> None:
     document = app.openapi()
     OUTPUT.write_text(
         json.dumps(document, indent=2, sort_keys=True) + "\n",
-        encoding="utf-8",
-    )
+        encoding="utf-8", newline="\n")
 
 
 if __name__ == "__main__":

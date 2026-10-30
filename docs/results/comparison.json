@@ -11,7 +11,11 @@
         "combined": true,
         "criteria": true
       },
-      "mutant": "category_accepts_toy"
+      "mutant": "category_accepts_toy",
+      "tuned_kill_in": [
+        "criteria",
+        "combined"
+      ]
     },
     {
       "description": "GET of an unknown product returns 200, not 404",
@@ -20,7 +24,8 @@
         "combined": true,
         "criteria": true
       },
-      "mutant": "get_unknown_product_200"
+      "mutant": "get_unknown_product_200",
+      "tuned_kill_in": []
     },
     {
       "description": "GET /health returns status 'up' instead of 'ok'",
@@ -29,7 +34,8 @@
         "combined": true,
         "criteria": true
       },
-      "mutant": "health_body_wrong"
+      "mutant": "health_body_wrong",
+      "tuned_kill_in": []
     },
     {
       "description": "product name maximum length relaxed from 40 to 41",
@@ -38,7 +44,8 @@
         "combined": true,
         "criteria": true
       },
-      "mutant": "name_max_length_41"
+      "mutant": "name_max_length_41",
+      "tuned_kill_in": []
     },
     {
       "description": "product name minimum length relaxed from 3 to 2",
@@ -47,7 +54,8 @@
         "combined": true,
         "criteria": true
       },
-      "mutant": "name_min_length_2"
+      "mutant": "name_min_length_2",
+      "tuned_kill_in": []
     },
     {
       "description": "order quantity maximum relaxed from 10 to 11",
@@ -56,7 +64,8 @@
         "combined": true,
         "criteria": false
       },
-      "mutant": "order_quantity_max_11"
+      "mutant": "order_quantity_max_11",
+      "tuned_kill_in": []
     },
     {
       "description": "an order for an unknown product is accepted",
@@ -65,7 +74,8 @@
         "combined": true,
         "criteria": true
       },
-      "mutant": "order_unknown_product_201"
+      "mutant": "order_unknown_product_201",
+      "tuned_kill_in": []
     },
     {
       "description": "product price may be zero (gt=0 becomes ge=0)",
@@ -74,7 +84,8 @@
         "combined": true,
         "criteria": true
       },
-      "mutant": "price_allows_zero"
+      "mutant": "price_allows_zero",
+      "tuned_kill_in": []
     },
     {
       "description": "product price 10000 is rejected (le=10000 becomes lt)",
@@ -83,7 +94,8 @@
         "combined": true,
         "criteria": false
       },
-      "mutant": "price_max_exclusive"
+      "mutant": "price_max_exclusive",
+      "tuned_kill_in": []
     },
     {
       "description": "stock quantity may be -1 (ge=0 becomes ge=-1)",
@@ -92,7 +104,8 @@
         "combined": true,
         "criteria": true
       },
-      "mutant": "stock_allows_negative_one"
+      "mutant": "stock_allows_negative_one",
+      "tuned_kill_in": []
     }
   ],
   "sample_sizes": {
@@ -109,13 +122,22 @@
       "mutation": {
         "executed": 10,
         "killed": 6,
+        "killed_including_tuned": 6,
         "mutation_score": 0.6,
+        "mutation_score_including_tuned": 0.6,
         "survived": [
           "category_accepts_toy",
           "get_unknown_product_200",
           "health_body_wrong",
           "order_unknown_product_201"
-        ]
+        ],
+        "survived_including_tuned": [
+          "category_accepts_toy",
+          "get_unknown_product_200",
+          "health_body_wrong",
+          "order_unknown_product_201"
+        ],
+        "tuned_kills": []
       },
       "requirement_coverage": {
         "coverage": 0.7222222222222222,
@@ -149,9 +171,17 @@
     "combined": {
       "mutation": {
         "executed": 10,
-        "killed": 10,
-        "mutation_score": 1.0,
-        "survived": []
+        "killed": 9,
+        "killed_including_tuned": 10,
+        "mutation_score": 0.9,
+        "mutation_score_including_tuned": 1.0,
+        "survived": [
+          "category_accepts_toy"
+        ],
+        "survived_including_tuned": [],
+        "tuned_kills": [
+          "category_accepts_toy"
+        ]
       },
       "requirement_coverage": {
         "coverage": 1.0,
@@ -184,11 +214,21 @@
     "criteria": {
       "mutation": {
         "executed": 10,
-        "killed": 8,
-        "mutation_score": 0.8,
+        "killed": 7,
+        "killed_including_tuned": 8,
+        "mutation_score": 0.7,
+        "mutation_score_including_tuned": 0.8,
         "survived": [
+          "category_accepts_toy",
           "order_quantity_max_11",
           "price_max_exclusive"
+        ],
+        "survived_including_tuned": [
+          "order_quantity_max_11",
+          "price_max_exclusive"
+        ],
+        "tuned_kills": [
+          "category_accepts_toy"
         ]
       },
       "requirement_coverage": {
